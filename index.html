@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101a32">
+<title>UMA-NAVI AI</title>
+<style>
+:root{--bg:#0b1224;--panel:#151f38;--line:#2c3958;--gold:#e9bd58;--txt:#f5f7fb;--muted:#aab5ca;--green:#59c58b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{padding:22px 18px;background:linear-gradient(135deg,#172849,#0b1224);border-bottom:1px solid var(--line)}
+h1{margin:0;color:var(--gold);font-size:25px}header p{margin:7px 0 0;color:var(--muted);font-size:13px}
+main{padding:15px;max-width:760px;margin:auto}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:15px;margin-bottom:14px}
+h2{font-size:17px;margin:0 0 13px;color:var(--gold)}label{display:block;color:var(--muted);font-size:12px;margin:8px 0 5px}
+input,select{width:100%;background:#0d1730;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:11px;font-size:15px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.btn{border:0;border-radius:10px;background:var(--gold);color:#172033;font-weight:700;padding:13px 15px;font-size:15px;width:100%;margin-top:12px}
+.btn.secondary{background:#263654;color:var(--txt);border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:8px 5px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:600}
+.horse input{min-width:0;padding:8px;font-size:13px}.horse td:first-child{width:48%}.horse td:nth-child(2){width:25%}
+.score{font-weight:700;color:var(--green)}.muted{color:var(--muted);font-size:12px;line-height:1.6}
+.result{padding:10px 0;border-bottom:1px solid var(--line)}.result:last-child{border:0}
+.pill{display:inline-block;border:1px solid #846b34;color:var(--gold);border-radius:30px;padding:3px 9px;font-size:11px;margin-right:5px}
+footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 18px 25px}
+@media(max-width:390px){.row{grid-template-columns:1fr}table{font-size:12px}}
+</style>
+</head>
+<body>
+<header><h1>🏇 UMA-NAVI AI</h1><p>中央競馬・地方競馬対応｜穴馬発見サポート</p></header>
+<main>
+<section class="card">
+<h2>レース設定</h2>
+<div class="row"><div><label>競馬区分</label><select id="kind"><option>中央競馬</option><option>地方競馬</option></select></div><div><label>競馬場</label><input id="track" placeholder="例：東京・大井"></div></div>
+<div class="row"><div><label>開催日</label><input id="date" type="date"></div><div><label>レース番号</label><input id="race" placeholder="例：11R"></div></div>
+<div class="row"><div><label>コース</label><select id="course"><option>芝</option><option>ダート</option></select></div><div><label>距離（m）</label><input id="distance" type="number" placeholder="例：1600"></div></div>
+<div class="row"><div><label>馬場状態</label><select id="going"><option>良</option><option>稍重</option><option>重</option><option>不良</option></select></div><div><label>予算（円）</label><input id="budget" type="number" value="3000" min="100"></div></div>
+</section>
+<section class="card">
+<h2>出走馬データ（手入力）</h2>
+<p class="muted">馬名・単勝オッズ・能力評価を入力して分析します。評価点は入力値を使った簡易スコアで、実際の勝率ではありません。</p>
+<table><thead><tr><th>馬名</th><th>単勝オッズ</th><th>能力(1〜10)</th><th></th></tr></thead><tbody id="horses"></tbody></table>
+<button class="btn secondary" id="add">＋ 出走馬を追加</button>
+<button class="btn" id="analyze">レースを分析する</button>
+</section>
+<section class="card" id="output">
+<h2>分析結果</h2><p class="muted">出走馬を入力して「レースを分析する」を押してください。</p>
+</section>
+<section class="card">
+<h2>データ取得について</h2>
+<p class="muted">現在は手入力版です。JRA・地方競馬の公式データを自動取得する機能、過去成績の学習、実オッズ連携はまだ接続されていません。公式データの利用条件を確認したうえで、次の開発段階で安全な取得方法を追加します。</p>
+</section>
+</main>
+<footer>UMA-NAVI AI 試作版｜馬券購入は自己責任で。無理のない予算で利用してください。</footer>
+<script>
+const tbody=document.getElementById('horses');
+function addHorse(name='',odds='',ability='5'){
+ const tr=document.createElement('tr');tr.className='horse';
+ tr.innerHTML=`<td><input aria-label="馬名" placeholder="馬名" value="${name}"></td><td><input aria-label="単勝オッズ" type="number" min="1" step="0.1" placeholder="例 12.5" value="${odds}"></td><td><input aria-label="能力" type="number" min="1" max="10" value="${ability}"></td><td><button type="button" aria-label="削除" style="background:#543044;color:white;border:0;border-radius:7px;padding:7px" onclick="this.closest('tr').remove()">×</button></td>`;
+ tbody.appendChild(tr);
+}
+for(let i=0;i<5;i++)addHorse();
+document.getElementById('add').onclick=()=>addHorse();
+document.getElementById('analyze').onclick=()=>{
+ const horses=[...tbody.querySelectorAll('tr')].map((tr,i)=>{
+ const x=tr.querySelectorAll('input');return {name:x[0].value.trim()||`馬${i+1}`,odds:Number(x[1].value),ability:Math.max(1,Math.min(10,Number(x[2].value)||5)),num:i+1};
+ }).filter(h=>h.odds>0);
+ if(!horses.length){alert('馬名と単勝オッズを1頭以上入力してください');return}
+ horses.forEach(h=>{h.score=Math.round(h.ability*10 + Math.min(20,Math.max(0,Math.log10(h.odds)*8)))});
+ horses.sort((a,b)=>b.score-a.score);
+ const budget=Math.max(100,Number(document.getElementById('budget').value)||3000);
+ const top=horses.slice(0,5);
+ const long=horses.filter(h=>h.odds>=10).sort((a,b)=>b.score-a.score).slice(0,3);
+ document.getElementById('output').innerHTML=`<h2>分析結果</h2><p class="muted"><span class="pill">${document.getElementById('kind').value}</span><span class="pill">${document.getElementById('track').value||'競馬場未入力'}</span><span class="pill">${document.getElementById('race').value||'レース未入力'}</span><br>設定予算：${budget.toLocaleString()}円</p><h3>総合スコア上位</h3>${top.map((h,i)=>`<div class="result">${i+1}位　<strong>${h.name}</strong>　<span class="score">${h.score}点</span><br><span class="muted">単勝 ${h.odds}倍</span></div>`).join('')}<h3>穴馬候補（10倍以上）</h3>${long.length?long.map(h=>`<div class="result"><strong>${h.name}</strong>　${h.odds}倍　<span class="score">${h.score}点</span></div>`).join(''):'該当馬なし'}<p class="muted">※この点数は入力した能力とオッズから算出する試作スコアです。予測勝率・期待回収率ではありません。買い目を自動確定するものではありません。</p>`;
+};
+</script>
+</body>
+</html>
