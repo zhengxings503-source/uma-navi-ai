@@ -3,108 +3,115 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
 <title>UMA-NAVI AI</title>
 <style>
-:root{color-scheme:dark;--bg:#07111f;--panel:#101f33;--line:#29405b;--gold:#e5bd62;--muted:#a9b8ca}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:18px}
-main{max-width:850px;margin:auto}.brand{color:var(--gold);font-size:13px;letter-spacing:.18em;font-weight:700}
-h1{font-size:27px;margin:7px 0 4px}.sub{color:var(--muted);font-size:13px;margin-bottom:20px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
-h2{font-size:17px;margin:0 0 12px;color:var(--gold)}
-label{display:block;font-size:13px;margin:13px 0 6px;color:#dce5f0}
-input[type=file],select{width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;background:#091728;color:#fff}
-button{width:100%;border:0;border-radius:10px;background:var(--gold);color:#17202b;font-weight:800;padding:14px;font-size:16px;margin-top:16px}
-.note{font-size:12px;line-height:1.6;color:var(--muted)}.status{white-space:pre-wrap;font-size:13px;line-height:1.65;margin-top:12px}
-.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.stat div{background:#091728;border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}.num{font-size:22px;color:var(--gold);font-weight:800}.small{font-size:11px;color:var(--muted)}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}th,td{padding:9px 7px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--gold)}
-.scroll{overflow-x:auto}select{margin:6px 0}
+:root{color-scheme:dark;--bg:#0b1220;--panel:#141f31;--line:#29384e;--gold:#e8bd58;--muted:#9eacc0;--txt:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#101b2c,#080e18);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:18px}
+main{max-width:850px;margin:auto}.brand{color:var(--gold);font-size:13px;letter-spacing:.16em;font-weight:700}.hero{padding:16px 0 20px}h1{font-size:29px;margin:6px 0}p{color:var(--muted);line-height:1.65}.panel{background:rgba(20,31,49,.96);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0;box-shadow:0 8px 24px #0003}h2{font-size:17px;margin:0 0 12px}.small{font-size:12px;color:var(--muted)}.files{display:grid;gap:12px}.field{padding:12px;border:1px dashed #40516b;border-radius:12px;background:#0e1828}label{display:block;font-size:13px;margin-bottom:7px;color:#dbe3ef}input[type=file],select{width:100%;color:var(--txt);background:#0b1422;border:1px solid var(--line);border-radius:9px;padding:10px}button{border:0;border-radius:10px;background:var(--gold);color:#17130a;font-weight:750;padding:12px 16px;font-size:14px;width:100%;margin-top:12px}button.secondary{background:#26364d;color:#f3f6fb;border:1px solid #3a4d68}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#0d1726;border:1px solid var(--line);border-radius:12px;padding:12px}.num{font-size:23px;font-weight:750;color:var(--gold);font-variant-numeric:tabular-nums}.stat div:last-child{font-size:11px;color:var(--muted);margin-top:3px}.status{font-size:13px;line-height:1.6;color:#cbd5e1;white-space:pre-wrap}.status.good{color:#8ee0b0}.status.bad{color:#ffadad}.row{display:flex;justify-content:space-between;align-items:center;gap:12px}.pill{font-size:11px;padding:4px 8px;border-radius:99px;background:#203b35;color:#8ee0b0}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--gold);font-weight:650}footer{font-size:11px;color:var(--muted);padding:8px 2px 30px}
+@media(max-width:460px){body{padding:13px}.stats{gap:6px}.stat{padding:9px}.num{font-size:19px}h1{font-size:25px}}
 </style>
 </head>
 <body><main>
-<div class="brand">UMA-NAVI AI</div>
-<h1>地方競馬データ取込</h1>
-<div class="sub">公式データファイルを端末内で読み込みます</div>
+<div class="hero"><div class="brand">HORSE RACING ANALYSIS</div><h1>UMA-NAVI AI</h1><p>中央・地方競馬のデータを蓄積し、レース分析につなげる予想サポートツール。</p></div>
 <section class="panel">
-<h2>① データファイルを選択</h2>
-<label>ホースリスト（horselist）</label><input id="horseFile" type="file">
-<label>レースリスト（racelist）</label><input id="raceFile" type="file">
-<label>払戻リスト（payback）</label><input id="payFile" type="file">
-<p class="note">ZIPではなく、解凍後の3ファイルを選んでください。ファイルはサーバーへ送信せず、このブラウザ内で処理します。</p>
-<button id="loadBtn">3ファイルを読み込む</button>
-<div id="status" class="status">ファイルを3つ選択してください。</div>
+ <div class="row"><h2>データを追加・更新</h2><span class="pill">端末内に自動保存</span></div>
+ <p class="small">月別CSV（タブ区切りテキスト）を選択してください。初回は過去2年分を月ごとに追加し、次回からは新しい月のファイルだけ追加すればOKです。</p>
+ <div class="files">
+  <div class="field"><label for="raceFile">① レースデータ（racelist）</label><input id="raceFile" type="file"></div>
+  <div class="field"><label for="horseFile">② 馬データ（horselist）</label><input id="horseFile" type="file"></div>
+  <div class="field"><label for="payFile">③ 払戻データ（payback）</label><input id="payFile" type="file"></div>
+ </div>
+ <button id="importBtn">選択したCSVを読み込んで保存</button>
+ <div id="message" class="status" style="margin-top:10px">まだデータは読み込まれていません。</div>
 </section>
-<section class="panel" id="result" hidden>
-<h2>② 読み込み結果</h2>
-<div class="stat"><div><div class="num" id="raceCount">0</div><div class="small">レース数</div></div><div><div class="num" id="horseCount">0</div><div class="small">馬データ数</div></div><div><div class="num" id="payCount">0</div><div class="small">払戻データ数</div></div></div>
-<label>レースを選択</label><select id="raceSelect"></select>
-<div class="scroll"><table><thead><tr><th>馬番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>人気</th></tr></thead><tbody id="horseRows"></tbody></table></div>
-<p class="note">注意：公式ホースリストに着順・タイム等の結果項目が含まれる場合があります。発走前予想の学習・評価では、結果情報を予想入力に混ぜないようにしてください。</p>
+<section class="panel">
+ <h2>保存済みデータ</h2>
+ <div class="stats">
+  <div class="stat"><div class="num" id="raceCount">0</div><div>レース数</div></div>
+  <div class="stat"><div class="num" id="horseCount">0</div><div>馬データ</div></div>
+  <div class="stat"><div class="num" id="payCount">0</div><div>払戻データ</div></div>
+ </div>
+ <div class="row" style="margin-top:13px"><span class="small">このiPhone・このブラウザ内に保存</span><button class="secondary" id="backupBtn" style="width:auto;margin:0;padding:8px 12px">バックアップ</button></div>
+ <p class="small">Safariの履歴・Webサイトデータを消去した場合などに備えて、定期的にバックアップしてください。</p>
 </section>
+<section class="panel">
+ <h2>レースを選択</h2>
+ <select id="raceSelect"><option value="">データを読み込むとレースが表示されます</option></select>
+ <div id="raceInfo" class="small" style="margin-top:10px">レースを選択してください。</div>
+ <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>馬番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>人気</th></tr></thead><tbody id="horseRows"><tr><td colspan="6" class="small">出走馬データはまだありません。</td></tr></tbody></table></div>
+</section>
+<footer>UMA-NAVI AI / データは端末内に保存されます。現在はデータ蓄積・出走表表示までの段階です。予想スコア・勝率・買い目はまだ実装されていません。</footer>
+</main>
 <script>
+const DB_NAME='umaNaviDB', DB_VERSION=1;
+let db;
 const $=id=>document.getElementById(id);
-let races=[],horses=[],pays=[];
-function decodeBuffer(buf){
-  const bytes=new Uint8Array(buf);
-  try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,'');}
-  catch(e){try{return new TextDecoder('shift-jis').decode(bytes).replace(/^\uFEFF/,'');}
-  catch(e2){return new TextDecoder().decode(bytes).replace(/^\uFEFF/,'');}}
+function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=()=>{const d=req.result;for(const s of ['races','horses','pays'])if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'_key'});};req.onsuccess=()=>{db=req.result;resolve(db)};req.onerror=()=>reject(req.error);});}
+function tx(store,mode='readonly'){return db.transaction(store,mode).objectStore(store)}
+function all(store){return new Promise((resolve,reject)=>{const r=tx(store).getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}
+function putMany(store,items){return new Promise((resolve,reject)=>{const t=db.transaction(store,'readwrite'),s=t.objectStore(store);items.forEach(x=>s.put(x));t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error)})}
+function clean(v){return (v??'').replace(/^\uFEFF/,'').trim()}
+function keyPart(v){return clean(v).replace(/\s/g,'')}
+function detect(headers, candidates){for(const c of candidates){const i=headers.findIndex(h=>clean(h).includes(c));if(i>=0)return i}return -1}
+async function parseFile(file,kind){
+ const buf=await file.arrayBuffer();let text;
+ try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){text=new TextDecoder('shift_jis').decode(buf)}
+ text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+ const lines=text.split('\n').filter(x=>x.trim().length);if(lines.length<2)throw new Error(file.name+' にデータ行がありません');
+ const headers=lines[0].split('\t').map(clean);
+ const rows=[];
+ const idx={
+  track:detect(headers,['競馬場']),date:detect(headers,['競走年月日']),race:detect(headers,['レース番号']),
+  horseNo:detect(headers,['馬番']),name:detect(headers,['馬名'])
+ };
+ if(idx.track<0||idx.date<0||idx.race<0)throw new Error(file.name+'：競馬場・競走年月日・レース番号の列を確認できません');
+ for(let n=1;n<lines.length;n++){
+  const cols=lines[n].split('\t');if(cols.length<3)continue;
+  const obj={};headers.forEach((h,i)=>{if(h)obj[h]=cols[i]??''});
+  const base=[cols[idx.track],cols[idx.date],cols[idx.race]].map(keyPart).join('_');
+  if(kind==='horses'&&idx.horseNo>=0)obj._key=base+'_'+keyPart(cols[idx.horseNo]);
+  else obj._key=base;
+  rows.push(obj);
+ }
+ return rows;
 }
-async function readText(file){return decodeBuffer(await file.arrayBuffer());}
-function splitLine(line,delimiter){return line.split(delimiter).map(x=>x.trim().replace(/^"|"$/g,''));}
-function parseFile(text,kind){
-  const lines=text.replace(/\r\n?/g,'\n').split('\n').filter(x=>x.trim()!=='');
-  if(!lines.length)throw new Error(kind+' が空です');
-  let found=null;
-  for(let i=0;i<Math.min(lines.length,30);i++){
-    const line=lines[i].replace(/^\uFEFF/,'');
-    const delim=line.includes('\t')?'\t':(line.includes(',')?',':null);
-    if(!delim)continue;
-    const cols=splitLine(line,delim).map(x=>x.replace(/^\uFEFF/,'').trim());
-    const joined=cols.join('|');
-    const ok=kind==='horselist'
-      ? joined.includes('競馬場')&&joined.includes('競走年月日')&&joined.includes('馬名')&&joined.includes('馬番')
-      : kind==='racelist'
-      ? joined.includes('競馬場')&&joined.includes('競走年月日')&&joined.includes('レース番号')&&joined.includes('距離')
-      : joined.includes('競馬場')&&joined.includes('競走年月日');
-    if(ok){found={index:i,delimiter:delim,headers:cols};break;}
-  }
-  if(!found)throw new Error(kind+'：見出し行を検出できません。文字コード・区切り形式を確認してください。');
-  const rows=[];
-  for(let i=found.index+1;i<lines.length;i++){
-    const cells=splitLine(lines[i],found.delimiter);
-    if(cells.length<2)continue;
-    const obj={};found.headers.forEach((h,j)=>obj[h]=cells[j]??'');
-    rows.push(obj);
-  }
-  return {headers:found.headers,rows};
+function setMessage(msg,cls=''){ $('message').textContent=msg;$('message').className='status '+cls; }
+async function refresh(){
+ const [r,h,p]=await Promise.all([all('races'),all('horses'),all('pays')]);
+ $('raceCount').textContent=r.length.toLocaleString();$('horseCount').textContent=h.length.toLocaleString();$('payCount').textContent=p.length.toLocaleString();
+ const sel=$('raceSelect'),old=sel.value;sel.innerHTML='<option value="">レースを選択してください</option>';
+ r.sort((a,b)=>(a['競走年月日']||'').localeCompare(b['競走年月日']||'')||(a['競馬場']||'').localeCompare(b['競馬場']||'')||Number(a['レース番号'])-Number(b['レース番号']));
+ for(const x of r){const o=document.createElement('option');o.value=x._key;o.textContent=`${x['競走年月日']||''} ${x['競馬場']||''} ${x['レース番号']||''}R ${x['レース名']||''}`;sel.appendChild(o)}
+ if(old&&[...sel.options].some(o=>o.value===old))sel.value=old;
 }
-function key(o){return [o['競馬場'],o['競走年月日'],o['レース番号']].join('|');}
-function val(o,...names){for(const n of names)if(o[n]!==undefined&&o[n]!=='')return o[n];return '';}
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-$('loadBtn').addEventListener('click',async()=>{
-  const hf=$('horseFile').files[0],rf=$('raceFile').files[0],pf=$('payFile').files[0];
-  if(!hf||!rf||!pf){$('status').textContent='3つすべてのファイルを選択してください。';return;}
-  $('status').textContent='読み込み中…';
-  try{
-    const [ht,rt,pt]=await Promise.all([readText(hf),readText(rf),readText(pf)]);
-    const hp=parseFile(ht,'horselist'),rp=parseFile(rt,'racelist'),pp=parseFile(pt,'payback');
-    horses=hp.rows;races=rp.rows;pays=pp.rows;
-    const select=$('raceSelect');select.innerHTML='';
-    races.forEach((r,i)=>{const op=document.createElement('option');op.value=String(i);op.textContent=[r['競馬場'],r['競走年月日'],r['レース番号']+'R',r['レース名']].filter(Boolean).join(' / ');select.appendChild(op);});
-    $('raceCount').textContent=races.length.toLocaleString();
-    $('horseCount').textContent=horses.length.toLocaleString();
-    $('payCount').textContent=pays.length.toLocaleString();
-    $('result').hidden=false;
-    renderHorses();
-    $('status').textContent='読み込み成功！3ファイルを認識しました。';
-  }catch(e){$('status').textContent='読み込みエラー：'+e.message+'\n\n選択したファイル名が horselist / racelist / payback か確認してください。';}
+$('importBtn').addEventListener('click',async()=>{
+ try{
+  const rf=$('raceFile').files[0],hf=$('horseFile').files[0],pf=$('payFile').files[0];
+  if(!rf&&!hf&&!pf){setMessage('先にCSVファイルを選択してください。','bad');return}
+  setMessage('読み込み中です…');
+  let totals=[];
+  for(const [f,s] of [[rf,'races'],[hf,'horses'],[pf,'pays']]){
+   if(!f)continue;
+   const rows=await parseFile(f,s);await putMany(s,rows);totals.push(`${f.name}: ${rows.length.toLocaleString()}行`);
+  }
+  await refresh();setMessage('読み込み・保存が完了しました。\n'+totals.join('\n')+'\n同じレース・馬のデータはキーで上書きし、別の月のデータは蓄積します。','good');
+  $('raceFile').value='';$('horseFile').value='';$('payFile').value='';
+ }catch(e){setMessage('読み込みに失敗しました：'+e.message,'bad')}
 });
-function renderHorses(){
-  const r=races[Number($('raceSelect').value)||0];if(!r)return;
-  const k=key(r);
-  const list=horses.filter(h=>key(h)===k);
-  $('horseRows').innerHTML=list.map(h=>`<tr><td>${esc(h['馬番'])}</td><td>${esc(h['馬名'])}</td><td>${esc((h['性']||'')+(h['齢']||''))}</td><td>${esc(h['騎手名'])}</td><td>${esc(h['負担重量'])}</td><td>${esc(h['人気'])}</td></tr>`).join('')||'<tr><td colspan="6">このレースに一致する馬データがありません。</td></tr>';
-}
-$('raceSelect').addEventListener('change',renderHorses);
-</script>
-</main></body></html>
+$('raceSelect').addEventListener('change',async()=>{
+ const k=$('raceSelect').value;if(!k){$('raceInfo').textContent='レースを選択してください。';return}
+ const [r,h]=await Promise.all([all('races'),all('horses')]);const race=r.find(x=>x._key===k);
+ if(!race)return;
+ $('raceInfo').textContent=`${race['競走年月日']||''} / ${race['競馬場']||''} / ${race['レース番号']||''}R / ${race['距離']||''} / ${race['馬場']||''} / ${race['頭数']||''}頭`;
+ const list=h.filter(x=>x._key.startsWith(k+'_')).sort((a,b)=>Number(a['馬番'])-Number(b['馬番']));
+ $('horseRows').innerHTML='';
+ if(!list.length){$('horseRows').innerHTML='<tr><td colspan="6">このレースの馬データがありません。</td></tr>';return}
+ for(const x of list){const tr=document.createElement('tr');for(const v of [x['馬番'],x['馬名'],(x['性']||'')+(x['齢']||''),x['騎手名'],x['負担重量'],x['人気']]){const td=document.createElement('td');td.textContent=v||'-';tr.appendChild(td)}$('horseRows').appendChild(tr)}
+});
+$('backupBtn').addEventListener('click',async()=>{
+ const data={app:'UMA-NAVI AI',version:1,exportedAt:new Date().toISOString(),races:await all('races'),horses:await all('horses'),pays:await all('pays')};
+ const blob=new Blob([JSON.stringify(data)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='uma-navi-backup.json';a.click();URL.revokeObjectURL(url);
+});
+(async()=>{try{await openDB();await refresh();setMessage('保存データを確認しました。読み込み済みデータは次回もこのブラウザに残ります。','good')}catch(e){setMessage('端末内保存を開始できませんでした：'+e.message,'bad')}})();
+</script></body></html>
