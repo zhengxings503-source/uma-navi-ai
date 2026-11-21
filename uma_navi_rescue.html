@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UMA-NAVI AI データ救出</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:0;padding:20px;background:#f5f6f8;color:#171717}
+main{max-width:680px;margin:auto;background:#fff;padding:20px;border-radius:14px}
+h1{font-size:22px;margin-top:0}
+p{line-height:1.65}
+button{font-size:17px;padding:14px 18px;border:0;border-radius:10px;background:#1769d2;color:white;width:100%;margin:10px 0}
+#status{white-space:pre-wrap;background:#f0f2f5;padding:12px;border-radius:8px;min-height:70px}
+.small{font-size:13px;color:#555}
+</style>
+</head>
+<body>
+<main>
+<h1>UMA-NAVI AI データ救出</h1>
+<p>既存の保存データを読み取り、JSONファイルとして書き出すためのページです。データベースの削除・初期化・上書きは行いません。</p>
+<button id="export">保存データを救出する</button>
+<div id="status">準備完了。ボタンを1回押してください。</div>
+<p class="small">読み込み中はこのページを閉じないでください。成功したらJSONファイルを「ファイル」アプリに保存してください。</p>
+</main>
+<script>
+const DB_NAME='umaNaviDB_v2';
+const STORES=['races','horses','pays'];
+const statusEl=document.getElementById('status');
+function say(s){statusEl.textContent=s;}
+function openDB(){
+ return new Promise((resolve,reject)=>{
+  let req;
+  try{req=indexedDB.open(DB_NAME);}catch(e){reject(e);return;}
+  req.onerror=()=>reject(req.error||new Error('データベースを開けません'));
+  req.onblocked=()=>reject(new Error('別の画面がデータベースを使用中です。元の画面を閉じず、少し待って再試行してください'));
+  req.onsuccess=()=>resolve(req.result);
+ });
+}
+function readStore(db,name){
+ return new Promise((resolve,reject)=>{
+  let tx, rows=[];
+  try{tx=db.transaction(name,'readonly');}catch(e){reject(e);return;}
+  tx.onerror=()=>reject(tx.error||new Error(name+' の読み込みに失敗'));
+  tx.onabort=()=>reject(tx.error||new Error(name+' の読み込みが中断'));
+  tx.oncomplete=()=>resolve(rows);
+  let req;
+  try{req=tx.objectStore(name).openCursor();}catch(e){reject(e);return;}
+  req.onerror=()=>{try{tx.abort();}catch(_){} reject(req.error||new Error(name+' のカーソル読み込みに失敗'));};
+  req.onsuccess=()=>{
+   const cursor=req.result;
+   if(cursor){rows.push(cursor.value);cursor.continue();}
+  };
+ });
+}
+document.getElementById('export').addEventListener('click',async()=>{
+ const btn=document.getElementById('export');btn.disabled=true;
+ let db;
+ try{
+  say('データベースに接続しています…');
+  db=await openDB();
+  const names=Array.from(db.objectStoreNames);
+  say('保存領域を確認しました：'+names.join(', ')+'\nデータを順番に読み込んでいます…');
+  const result={app:'UMA-NAVI AI',backup_version:'rescue-1',created_at:new Date().toISOString(),data:{}};
+  for(const name of STORES){
+   if(!names.includes(name)){result.data[name]=[];continue;}
+   result.data[name]=await readStore(db,name);
+   say(name+'：'+result.data[name].length+'件 読み込み完了');
+  }
+  db.close();db=null;
+  const counts=STORES.map(n=>n+' '+result.data[n].length+'件').join('\n');
+  const blob=new Blob([JSON.stringify(result)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='uma-navi-backup-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  say('バックアップファイルの書き出しを開始しました。\n'+counts+'\n「ファイル」アプリにJSONが保存されたか確認してください。');
+ }catch(e){
+  if(db)try{db.close();}catch(_){}
+  say('救出エラー：'+(e&&e.message?e.message:String(e))+'\nこの画面を閉じず、表示されたエラーをそのまま教えてください。');
+ }finally{btn.disabled=false;}
+});
+</script>
+</body>
+</html>
