@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>UMA-NAVI AI</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#141f31;--line:#29384e;--gold:#e8bd58;--muted:#9eacc0;--txt:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#101b2c,#080e18);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px}
+main{max-width:850px;margin:auto}.brand{color:var(--gold);font-size:13px;letter-spacing:.16em;font-weight:700}.hero{padding:12px 0 18px}h1{font-size:28px;margin:6px 0}p{color:var(--muted);line-height:1.6}.panel{background:rgba(20,31,49,.96);border:1px solid var(--line);border-radius:16px;padding:15px;margin:13px 0}h2{font-size:17px;margin:0 0 12px}.small{font-size:12px;color:var(--muted)}.files{display:grid;gap:10px}.field{padding:11px;border:1px dashed #40516b;border-radius:12px;background:#0e1828}label{display:block;font-size:13px;margin-bottom:7px;color:#dbe3ef}input[type=file],select{width:100%;color:var(--txt);background:#0b1422;border:1px solid var(--line);border-radius:9px;padding:10px}button{border:0;border-radius:10px;background:var(--gold);color:#17130a;font-weight:750;padding:12px 15px;font-size:14px;width:100%;margin-top:11px}button.secondary{background:#26364d;color:#f3f6fb;border:1px solid #3a4d68}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#0d1726;border:1px solid var(--line);border-radius:12px;padding:11px}.num{font-size:22px;font-weight:750;color:var(--gold);font-variant-numeric:tabular-nums}.stat div:last-child{font-size:11px;color:var(--muted);margin-top:3px}.status{font-size:13px;line-height:1.65;color:#cbd5e1;white-space:pre-wrap;overflow-wrap:anywhere}.good{color:#8ee0b0}.bad{color:#ffadad}.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.pill{font-size:11px;padding:4px 8px;border-radius:99px;background:#203b35;color:#8ee0b0}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--gold)}footer{font-size:11px;color:var(--muted);padding:8px 2px 25px}
+@media(max-width:460px){body{padding:12px}.stat{padding:8px}.num{font-size:19px}}
+</style></head>
+<body><main>
+<div class="hero"><div class="brand">HORSE RACING ANALYSIS</div><h1>UMA-NAVI AI</h1><p>競馬データを端末内に蓄積し、レース分析に使う予想サポートツール。</p><div class="small">データ保存機能 修正版 v2.4（DB取引完了待ち）</div></div>
+<section class="panel">
+<h2>データを追加・更新</h2>
+<p class="small">初回は過去2年分を月ごとに追加。次回からは新しい月のファイルだけ追加してください。ファイルはタブ区切り形式に対応しています。</p>
+<div class="files">
+<div class="field"><label for="raceFile">① レースデータ（racelist）</label><input id="raceFile" type="file"></div>
+<div class="field"><label for="horseFile">② 馬データ（horselist）</label><input id="horseFile" type="file"></div>
+<div class="field"><label for="payFile">③ 払戻データ（payback）</label><input id="payFile" type="file"></div>
+</div>
+<button id="importBtn">選択したCSVを読み込んで保存</button>
+<div id="message" class="status" style="margin-top:12px">起動確認中…</div>
+</section>
+<section class="panel">
+<div class="row"><h2>保存済みデータ</h2><span class="pill">自動保存</span></div>
+<div class="stats">
+<div class="stat"><div class="num" id="raceCount">確認中</div><div>レース数</div></div>
+<div class="stat"><div class="num" id="horseCount">確認中</div><div>馬データ</div></div>
+<div class="stat"><div class="num" id="payCount">確認中</div><div>払戻データ</div></div>
+</div>
+<div class="row" style="margin-top:12px"><span class="small">このiPhoneのSafari内に保存</span><button class="secondary" id="backupBtn" style="width:auto;margin:0">バックアップ</button></div>
+<p class="small">SafariのWebサイトデータを消すと保存内容も消える場合があります。バックアップを保管してください。</p>
+</section>
+<section class="panel">
+<h2>レースを選択</h2><select id="raceSelect"><option value="">レースを選択してください</option></select>
+<div id="raceInfo" class="small" style="margin-top:10px">レースを選択してください。</div>
+<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>馬番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>人気</th></tr></thead><tbody id="horseRows"><tr><td colspan="6">データがありません。</td></tr></tbody></table></div>
+</section>
+<footer>現在はCSVの蓄積・出走表表示までです。予想スコア、勝率推定、買い目自動生成はまだ未実装です。</footer>
+</main>
+<script>
+'use strict';
+const DB_NAME='umaNaviDB_v2',DB_VERSION=1;
+const $=id=>document.getElementById(id);
+function show(msg,kind=''){ $('message').textContent=msg;$('message').className='status '+kind; }
+
+/* 取引ごとにDB接続を新しく開き、完了後に閉じる。
+   DB名・バージョン・ストア名・キーは旧版と同じなので既存データを引き継ぐ。 */
+function openFreshDB(){return new Promise((resolve,reject)=>{
+ const req=indexedDB.open(DB_NAME,DB_VERSION);
+ req.onupgradeneeded=()=>{const d=req.result;['races','horses','pays'].forEach(n=>{if(!d.objectStoreNames.contains(n))d.createObjectStore(n,{keyPath:'_key'});});};
+ req.onsuccess=()=>{const conn=req.result;conn.onversionchange=()=>conn.close();resolve(conn);};
+ req.onerror=()=>reject(req.error||new Error('IndexedDBを開けません'));
+ req.onblocked=()=>reject(new Error('別タブでデータベースが開いています。ほかのUMA-NAVIタブを閉じて再読み込みしてください'));
+});}
+async function getAll(store){
+ const conn=await openFreshDB();
+ return new Promise((resolve,reject)=>{
+  let tx, result=[];
+  try{tx=conn.transaction(store,'readonly');}catch(e){conn.close();reject(e);return;}
+  const req=tx.objectStore(store).getAll();
+  req.onsuccess=()=>{result=req.result||[];};
+  req.onerror=()=>{conn.close();reject(req.error||new Error(store+'の読み込みに失敗'));};
+  // トランザクション完了とDB接続の終了を待ってから次の処理へ進む
+  tx.oncomplete=()=>{conn.close();resolve(result);};
+  tx.onerror=()=>{conn.close();reject(tx.error||new Error(store+'の読み込みに失敗'));};
+  tx.onabort=()=>{conn.close();reject(tx.error||new Error(store+'の読み込みが中断'));};
+ });
+}
+async function saveRows(store,rows){
+ const conn=await openFreshDB();
+ return new Promise((resolve,reject)=>{
+  let tx;
+  try{tx=conn.transaction(store,'readwrite');}catch(e){conn.close();reject(e);return;}
+  const s=tx.objectStore(store);let count=0;
+  try{for(const row of rows){s.put(row);count++;}}
+  catch(e){try{tx.abort();}catch(_){}conn.close();reject(e);return;}
+  tx.oncomplete=()=>{conn.close();resolve(count);};
+  tx.onerror=()=>{conn.close();reject(tx.error||new Error(store+'の保存に失敗'));};
+  tx.onabort=()=>{conn.close();reject(tx.error||new Error(store+'の保存が中断'));};
+ });
+}
+const norm=s=>(s??'').replace(/^\uFEFF/,'').trim();
+const compact=s=>norm(s).replace(/\s/g,'');
+function findCol(headers,terms){for(let i=0;i<headers.length;i++)if(terms.some(t=>headers[i].includes(t)))return i;return -1;}
+async function readTSV(file,kind){
+ const buf=await file.arrayBuffer();let text;
+ try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}catch(_){text=new TextDecoder('shift_jis').decode(buf);}
+ text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+ const lines=text.split('\n').filter(line=>line.trim()!=='');
+ if(lines.length<2)throw new Error(file.name+'：ヘッダーまたはデータ行がありません');
+ const headers=lines[0].split('\t').map(norm);
+ const ix={track:findCol(headers,['競馬場']),date:findCol(headers,['競走年月日','年月日']),race:findCol(headers,['レース番号','Ｒ番号']),horseNo:findCol(headers,['馬番']),name:findCol(headers,['馬名'])};
+ if(ix.track<0||ix.date<0||ix.race<0)throw new Error(file.name+'：競馬場・競走年月日・レース番号の列を検出できません。先頭行がタブ区切りか確認してください。');
+ const out=[];
+ for(let i=1;i<lines.length;i++){
+  const cols=lines[i].split('\t');if(cols.length<headers.length/3)continue;
+  const track=compact(cols[ix.track]),date=compact(cols[ix.date]),race=compact(cols[ix.race]);
+  if(!track||!date||!race)continue;
+  const raceKey=[track,date,race].join('_'),obj={};
+  headers.forEach((h,j)=>{if(h)obj[h]=cols[j]??'';});
+  if(kind==='horses'){if(ix.horseNo<0)throw new Error(file.name+'：馬番列が見つかりません');obj._key=raceKey+'_'+compact(cols[ix.horseNo]);}
+  else obj._key=raceKey;
+  out.push(obj);
+ }
+ if(!out.length)throw new Error(file.name+'：有効なデータ行を0件しか読み込めませんでした。列の区切り形式を確認してください。');
+ return {rows:out,totalLines:lines.length-1,headers:headers};
+}
+async function refresh(){
+ // iOS Safari向けにIndexedDBの読み込みを順番に行う
+ const r=await getAll('races');
+ const h=await getAll('horses');
+ const p=await getAll('pays');
+ $('raceCount').textContent=r.length.toLocaleString();$('horseCount').textContent=h.length.toLocaleString();$('payCount').textContent=p.length.toLocaleString();
+ const sel=$('raceSelect'),old=sel.value;sel.innerHTML='<option value="">レースを選択してください</option>';
+ r.sort((a,b)=>(a['競走年月日']||'').localeCompare(b['競走年月日']||'')||(a['競馬場']||'').localeCompare(b['競馬場']||'')||Number(a['レース番号'])-Number(b['レース番号']));
+ for(const x of r){const o=document.createElement('option');o.value=x._key;o.textContent=[x['競走年月日'],x['競馬場'],x['レース番号']+'R',x['レース名']].filter(Boolean).join(' ');sel.appendChild(o);}
+ if(old&&[...sel.options].some(o=>o.value===old))sel.value=old;
+ return {r:r.length,h:h.length,p:p.length};
+}
+$('importBtn').addEventListener('click',async()=>{
+ $('importBtn').disabled=true;
+ try{
+  const files=[['racelist',$('raceFile').files[0],'races'],['horselist',$('horseFile').files[0],'horses'],['payback',$('payFile').files[0],'pays']];
+  if(!files.some(x=>x[1]))throw new Error('先に1つ以上のファイルを選択してください。');
+  const report=[];
+  for(const [label,file,store] of files){
+   if(!file)continue;
+   show(label+'を読み込み中…');
+   const parsed=await readTSV(file,store);
+   const saved=await saveRows(store,parsed.rows);
+   report.push(`${label}：${saved.toLocaleString()}件を保存（データ行 ${parsed.totalLines.toLocaleString()}行）`);
+  }
+  const counts=await refresh();
+  show('読み込み・保存を確認しました。\n'+report.join('\n')+`\n\n保存済み合計：レース ${counts.r.toLocaleString()}件／馬 ${counts.h.toLocaleString()}件／払戻 ${counts.p.toLocaleString()}件`,'good');
+ }catch(e){show('エラー：'+(e&&e.message?e.message:String(e)),'bad');}
+ finally{$('importBtn').disabled=false;}
+});
+$('raceSelect').addEventListener('change',async()=>{
+ const k=$('raceSelect').value;if(!k){$('raceInfo').textContent='レースを選択してください。';return;}
+ try{
+  const r=await getAll('races');const h=await getAll('horses');const race=r.find(x=>x._key===k);if(!race)return;
+  $('raceInfo').textContent=[race['競走年月日'],race['競馬場'],race['レース番号']+'R',race['距離'],race['馬場'],race['頭数']+'頭'].filter(Boolean).join(' / ');
+  const list=h.filter(x=>x._key.startsWith(k+'_')).sort((a,b)=>Number(a['馬番'])-Number(b['馬番']));
+  $('horseRows').innerHTML='';
+  if(!list.length){$('horseRows').innerHTML='<tr><td colspan="6">このレースの馬データがありません。</td></tr>';return;}
+  for(const x of list){const tr=document.createElement('tr');[(x['馬番']),(x['馬名']),((x['性']||'')+(x['齢']||'')),x['騎手名'],x['負担重量'],x['人気']].forEach(v=>{const td=document.createElement('td');td.textContent=v||'-';tr.appendChild(td);});$('horseRows').appendChild(tr);}
+ }catch(e){show('レース表示エラー：'+e.message,'bad');}
+});
+$('backupBtn').addEventListener('click',async()=>{
+ $('backupBtn').disabled=true;
+ try{
+  show('バックアップを作成中…');
+  // 大量データを扱うSafari向けにストアを同時取得せず順番に読み込む
+  const races=await getAll('races');
+  const horses=await getAll('horses');
+  const pays=await getAll('pays');
+  const data={app:'UMA-NAVI AI',version:3,exportedAt:new Date().toISOString(),races:races,horses:horses,pays:pays};
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='uma-navi-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  show(`バックアップファイルを作成しました。\nレース ${data.races.length.toLocaleString()}件／馬 ${data.horses.length.toLocaleString()}件／払戻 ${data.pays.length.toLocaleString()}件`,'good');
+ }catch(e){show('バックアップエラー：'+e.message,'bad');}
+ finally{$('backupBtn').disabled=false;}
+});
+(async()=>{try{if(!('indexedDB'in window))throw new Error('このブラウザは端末内保存に対応していません');const c=await refresh();show(`保存領域の起動OK。現在の保存件数：レース ${c.r}／馬 ${c.h}／払戻 ${c.p}。\n※既存データを引き継いでいます。`,'good');}catch(e){show('起動エラー：'+e.message,'bad');}})();
+</script></body></html>
