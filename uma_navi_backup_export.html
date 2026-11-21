@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UMA-NAVI AI バックアップ書き出し</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:18px;line-height:1.6;color:#222}h2{font-size:21px}button{font-size:16px;margin:8px 0;padding:13px 16px;border:0;border-radius:9px;background:#1769aa;color:white}button:disabled{opacity:.45}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f2f2;padding:12px;border-radius:8px;font-size:14px}.warn{color:#9a4d00}
+</style></head><body>
+<h2>UMA-NAVI AI バックアップ書き出し</h2>
+<p class="warn">このページは新しい保存領域 <b>umaNaviDB_v25</b> を読み取るだけです。データの追加・変更・削除は行いません。旧DB umaNaviDB_v2 にも接続しません。</p>
+<p>① 保存領域の件数を確認し、② JSONバックアップを書き出します。</p>
+<button id="check">保存データの件数を確認</button><br>
+<button id="export" disabled>バックアップJSONを書き出す</button>
+<pre id="log">待機中</pre>
+<script>
+const $=id=>document.getElementById(id);let db=null;const names=['races','horses','pays'];
+function log(s){$('log').textContent+=`\n${s}`;}
+function openDB(){return new Promise((resolve,reject)=>{let r;try{r=indexedDB.open('umaNaviDB_v25',1)}catch(e){reject(e);return}r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('IndexedDBを開けませんでした'));r.onblocked=()=>reject(new Error('DBが別タブで使用中です。他のUMA-NAVIタブを閉じて再試行してください。'));});}
+function countStore(store){return new Promise((resolve,reject)=>{let tx,req;try{tx=db.transaction(store,'readonly');req=tx.objectStore(store).count()}catch(e){reject(e);return}req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error(store+'件数取得エラー'));tx.onabort=()=>reject(tx.error||new Error(store+' transaction aborted'));});}
+function readStore(store){return new Promise((resolve,reject)=>{let tx,os,req,rows=[];try{tx=db.transaction(store,'readonly');os=tx.objectStore(store);req=os.openCursor()}catch(e){reject(e);return}req.onsuccess=()=>{const c=req.result;if(c){rows.push(c.value);c.continue();}};req.onerror=()=>reject(req.error||new Error(store+'読み込みエラー'));tx.oncomplete=()=>resolve(rows);tx.onerror=()=>reject(tx.error||new Error(store+' transaction error'));tx.onabort=()=>reject(tx.error||new Error(store+' transaction aborted'));});}
+$('check').onclick=async()=>{ $('check').disabled=true;$('export').disabled=true;$('log').textContent='';try{db=await openDB();if(names.some(n=>!db.objectStoreNames.contains(n)))throw new Error('必要な保存領域が見つかりません。v2.5.1の復元先を確認してください。');let total=0;for(const n of names){const c=await countStore(n);total+=c;log(`${n}: ${c.toLocaleString()}件`);}log(`合計: ${total.toLocaleString()}件`);if(total===0)throw new Error('保存データが0件です');log('件数確認OK。JSONを書き出せます。');$('export').disabled=false;}catch(e){log('確認エラー：'+(e.message||e));}finally{if(db){db.close();db=null;}$('check').disabled=false;}};
+$('export').onclick=async()=>{$('export').disabled=true;$('check').disabled=true;$('log').textContent='';try{db=await openDB();const data={};for(const n of names){log(`${n}を読み込み中…`);data[n]=await readStore(n);log(`${n}: ${data[n].length.toLocaleString()}件 読み込み完了`);}const total=names.reduce((s,n)=>s+data[n].length,0);log(`合計 ${total.toLocaleString()}件をJSONにまとめています…`);const backup={app:'UMA-NAVI AI',backup_version:'v25-export-1',created_at:new Date().toISOString(),data};const blob=new Blob([JSON.stringify(backup)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');const stamp=new Date().toISOString().replace(/[:.]/g,'-');a.href=url;a.download=`uma-navi-backup-v25-${stamp}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);log(`書き出しを開始しました。ファイルサイズ：約${(blob.size/1024/1024).toFixed(2)}MB`);log('iPhoneの「ファイル」アプリに保存されたことを確認してください。');}catch(e){log('書き出しエラー：'+(e.message||e));log('この結果を送ってください。元データは変更していません。');}finally{if(db){db.close();db=null;}$('check').disabled=false;}};
+</script></body></html>
