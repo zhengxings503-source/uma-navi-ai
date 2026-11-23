@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UMA-NAVI AI データ全体診断</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:18px;background:#f5f6f8;color:#17202a}
+main{max-width:760px;margin:auto}h1{font-size:22px}p{line-height:1.6}
+button{width:100%;padding:15px;border:0;border-radius:10px;background:#1769aa;color:white;font-size:17px;font-weight:700}
+#status{margin:14px 0;font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:white;padding:14px;border-radius:10px;border:1px solid #ddd;line-height:1.5;font-size:13px}
+.note{background:#fff8df;padding:12px;border-radius:9px}
+</style>
+</head>
+<body><main>
+<h1>UMA-NAVI AI データ全体診断</h1>
+<p>保存済みデータの範囲・競馬場の種類・項目の欠損状況を調べる専用ページです。</p>
+<div class="note">読み取り専用です。データの追加・変更・削除・初期化は一切しません。診断中はこのページを閉じずに待ってください。</div>
+<p><button id="run">全体診断を開始</button></p>
+<div id="status">待機中</div>
+<pre id="out">診断結果はここに表示されます。</pre>
+<script>
+const DB_NAME="umaNaviDB_v25";
+const DB_VERSION=1;
+const $=id=>document.getElementById(id);
+function openDB(){
+ return new Promise((resolve,reject)=>{
+  const req=indexedDB.open(DB_NAME,DB_VERSION);
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error);
+  req.onupgradeneeded=()=>{req.transaction.abort();reject(new Error("DB version mismatch"))};
+ });
+}
+function val(v){return v===undefined||v===null?"":String(v).trim()}
+function dateNum(v){const s=val(v).replace(/[^\d]/g,"");return /^\d{8}$/.test(s)?s:null}
+function pct(n,total){return total?((n/total)*100).toFixed(1)+"%":"-"}
+async function scanStore(db,name,fields){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(name,"readonly"), store=tx.objectStore(name);
+  const result={count:0,venues:{},minDate:null,maxDate:null,fieldMissing:{},sampleKeys:[]};
+  fields.forEach(f=>result.fieldMissing[f]=0);
+  const req=store.openCursor();
+  req.onsuccess=()=>{
+   const c=req.result;
+   if(!c){resolve(result);return}
+   const row=c.value||{}; result.count++;
+   if(result.sampleKeys.length<1) result.sampleKeys=Object.keys(row);
+   const venue=val(row["競馬場"]); if(venue)result.venues[venue]=(result.venues[venue]||0)+1;
+   const d=dateNum(row["競走年月日"]??row["年月日"]);
+   if(d){if(!result.minDate||d<result.minDate)result.minDate=d;if(!result.maxDate||d>result.maxDate)result.maxDate=d;}
+   fields.forEach(f=>{if(!val(row[f]))result.fieldMissing[f]++});
+   if(result.count%5000===0)$("status").textContent=name+"： "+result.count.toLocaleString()+"件を確認中…";
+   c.continue();
+  };
+  req.onerror=()=>reject(req.error);
+  tx.onerror=()=>reject(tx.error);
+ });
+}
+$("run").onclick=async()=>{
+ $("run").disabled=true;$("status").textContent="データベースを開いています…";$("out").textContent="";
+ let db;
+ try{
+  db=await openDB();
+  const races=await scanStore(db,"races",["競馬場","競走年月日","レース番号","芝ダート区分","距離","馬場","頭数"]);
+  const horses=await scanStore(db,"horses",["競馬場","競走年月日","レース番号","馬名","騎手名","負担重量","馬体重","着順","タイム","上がり3F","人気"]);
+  const pays=await scanStore(db,"pays",["競馬場","競走年月日","レース番号","単勝払戻金（円）","馬複払戻金（円）","３連複払戻金（円）","３連単払戻金（円）"]);
+  const fmt=s=>s?`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`:"不明";
+  function venueText(o){return Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`  ${k}: ${v.toLocaleString()}件`).join("\n")||"  取得できず"}
+  function missingText(o,total){return Object.entries(o.fieldMissing).map(([k,v])=>`  ${k}: ${v.toLocaleString()}件 (${pct(total-v,total)}入力あり)`).join("\n")}
+  const total=races.count+horses.count+pays.count;
+  const report=
+`【全体件数】
+races：${races.count.toLocaleString()}件
+horses：${horses.count.toLocaleString()}件
+pays：${pays.count.toLocaleString()}件
+合計：${total.toLocaleString()}件
+
+【日付範囲】
+races：${fmt(races.minDate)} ～ ${fmt(races.maxDate)}
+horses：${fmt(horses.minDate)} ～ ${fmt(horses.maxDate)}
+pays：${fmt(pays.minDate)} ～ ${fmt(pays.maxDate)}
+
+【競馬場別件数：races】
+${venueText(races.venues)}
+
+【競馬場別件数：horses】
+${venueText(horses.venues)}
+
+【競馬場別件数：pays】
+${venueText(pays.venues)}
+
+【races 項目の入力状況】
+${missingText(races,races.count)}
+
+【horses 項目の入力状況】
+${missingText(horses,horses.count)}
+
+【pays 項目の入力状況】
+${missingText(pays,pays.count)}
+
+【確認用：racesの項目名】
+${races.sampleKeys.join(" / ")}
+
+【確認用：horsesの項目名】
+${horses.sampleKeys.join(" / ")}
+
+【確認用：paysの項目名】
+${pays.sampleKeys.join(" / ")}
+
+※この診断はデータの存在範囲と入力状況を調べるものです。予想精度や収益性を示すものではありません。`;
+  $("out").textContent=report;
+  $("status").textContent="診断完了！結果をすべてコピーして送ってください。";
+ }catch(e){
+  $("status").textContent="診断エラー";
+  $("out").textContent=String(e&&e.message||e);
+ }finally{if(db)db.close();$("run").disabled=false;}
+};
+</script></main></body></html>
