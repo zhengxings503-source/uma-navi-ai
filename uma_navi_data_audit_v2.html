@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UMA-NAVI AI データ構造監査 v2</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:18px;background:#f5f6f8;color:#20242a}
+main{max-width:900px;margin:auto}h1{font-size:22px}p{line-height:1.6}
+button{font-size:16px;padding:13px 18px;border:0;border-radius:10px;background:#1769d2;color:white;font-weight:600}
+button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:14px;border-radius:10px;border:1px solid #ddd;line-height:1.5}
+.note{background:#fff8df;padding:12px;border-radius:10px}.ok{color:#087b42}.err{color:#b42318}
+</style>
+</head>
+<body><main>
+<h1>UMA-NAVI AI データ構造監査 v2</h1>
+<p>このページは <b>umaNaviDB_v25</b> を読み取るだけの確認ツールです。追加・変更・削除は一切しません。</p>
+<div class="note">前回の監査ツールは、保存形式を誤認して項目を読み取れていませんでした。今回は「ヘッダー文字列をキーにし、その値にCSV行を保存する」形式に対応しています。</div>
+<p><button id="run">読み取り監査を開始</button></p>
+<pre id="out">まだ実行していません。</pre>
+</main>
+<script>
+const out=document.getElementById('out'), btn=document.getElementById('run');
+function csvParse(s){
+  const a=[]; let v='', q=false;
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(q){ if(c==='"' && s[i+1]==='"'){v+='"';i++} else if(c==='"') q=false; else v+=c; }
+    else { if(c==='"') q=true; else if(c===','){a.push(v);v=''} else if(c!=='\r' && c!=='\n') v+=c; }
+  }
+  a.push(v); return a;
+}
+function openDB(){
+ return new Promise((resolve,reject)=>{
+  const req=indexedDB.open('umaNaviDB_v25');
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error);
+  req.onupgradeneeded=()=>{req.transaction.abort();reject(new Error('DBが存在しないか、バージョン確認が必要です。'))};
+ });
+}
+function scan(db,storeName){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(storeName,'readonly'), store=tx.objectStore(storeName);
+  const result={count:0,header:null,headerMismatch:0,parseMismatch:0,emptyDate:0,emptyVenue:0,
+    minDate:null,maxDate:null,venues:{},fields:{},raceIds:new Set(),sample:[],keySamples:[]};
+  const req=store.openCursor();
+  req.onsuccess=()=>{
+   const cur=req.result;
+   if(!cur){resolve(result);return}
+   try{
+    const obj=cur.value; result.count++;
+    const dataKeys=Object.keys(obj).filter(k=>k!=='_key');
+    if(dataKeys.length!==1){result.parseMismatch++;cur.continue();return}
+    const headerText=dataKeys[0], raw=obj[headerText];
+    const headers=headerText.split(',');
+    if(!result.header) result.header=headers;
+    else if(headerText!==result.header.join(',')) result.headerMismatch++;
+    const vals=csvParse(String(raw??''));
+    if(vals.length!==headers.length) result.parseMismatch++;
+    const row={}; headers.forEach((h,i)=>row[h]=vals[i]??'');
+    const venue=(row['競馬場']||'').trim(), date=(row['競走年月日']||'').trim(), no=(row['レース番号']||'').trim();
+    if(!venue)result.emptyVenue++;
+    else result.venues[venue]=(result.venues[venue]||0)+1;
+    if(!/^\d{8}$/.test(date))result.emptyDate++;
+    else {if(!result.minDate||date<result.minDate)result.minDate=date;if(!result.maxDate||date>result.maxDate)result.maxDate=date;}
+    if(venue&&date&&no)result.raceIds.add(venue+'|'+date+'|'+no);
+    headers.forEach((h,i)=>{const f=result.fields[h]||(result.fields[h]={total:0,filled:0});f.total++;if(String(vals[i]??'').trim()!=='')f.filled++});
+    if(result.sample.length<2)result.sample.push({venue,date,no,keys:headers.length,values:vals.length,example:row});
+    if(result.keySamples.length<2)result.keySamples.push({cursorKey:String(cur.key).slice(0,180),storedKey:String(obj._key??'').slice(0,180)});
+   }catch(e){result.parseMismatch++}
+   cur.continue();
+  };
+  req.onerror=()=>reject(req.error);
+ });
+}
+function fmtDate(d){return d?d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8):'取得できず'}
+function reportStore(name,r){
+ let s=`【${name}】\n件数: ${r.count.toLocaleString()}\n項目数: ${r.header?.length??0}\nヘッダー不一致: ${r.headerMismatch}\nCSV項目数不一致/構造異常: ${r.parseMismatch}\n競馬場空欄: ${r.emptyVenue}\n日付形式不正/空欄: ${r.emptyDate}\n日付範囲: ${fmtDate(r.minDate)} ～ ${fmtDate(r.maxDate)}\n抽出できたレースID数: ${r.raceIds.size.toLocaleString()}\n競馬場別件数: ${Object.entries(r.venues).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+': '+v.toLocaleString()).join(' / ')||'なし'}\n主要項目の入力率:\n`;
+ const wanted=['競馬場','競走年月日','レース番号','馬名','馬番','着順','タイム','上がり3F','人気','距離','芝ダート区分','馬場','騎手名','調教師','単勝払戻金（円）','３連単払戻金（円）'];
+ for(const f of wanted)if(r.fields[f])s+=`  ${f}: ${r.fields[f].filled.toLocaleString()}/${r.fields[f].total.toLocaleString()} (${(100*r.fields[f].filled/r.fields[f].total).toFixed(1)}%)\n`;
+ s+='サンプルのキー確認:\n'+JSON.stringify(r.keySamples,null,2)+'\n';
+ return s;
+}
+btn.onclick=async()=>{
+ btn.disabled=true;out.textContent='データベースを開いています…';
+ let db;
+ try{
+  db=await openDB();
+  const names=['races','horses','pays'];
+  for(const n of names)if(!db.objectStoreNames.contains(n))throw new Error('ストア '+n+' が見つかりません');
+  const results={};
+  for(const n of names){out.textContent+=`\n${n} を読み取り中…`;results[n]=await scan(db,n);}
+  const [r,h,p]=[results.races,results.horses,results.pays];
+  const lines=[];
+  lines.push('監査完了（読み取り専用）');
+  lines.push(reportStore('races',r),reportStore('horses',h),reportStore('pays',p));
+  const raceSet=r.raceIds, horseRaceSet=h.raceIds, payRaceSet=p.raceIds;
+  let horseOnly=0,payOnly=0,raceNoHorse=0,raceNoPay=0;
+  for(const x of horseRaceSet)if(!raceSet.has(x))horseOnly++;
+  for(const x of payRaceSet)if(!raceSet.has(x))payOnly++;
+  for(const x of raceSet){if(!horseRaceSet.has(x))raceNoHorse++;if(!payRaceSet.has(x))raceNoPay++;}
+  lines.push('【3ストアの紐付け確認】');
+  lines.push('racesに存在しないhorses側レースID: '+horseOnly);
+  lines.push('racesに存在しないpays側レースID: '+payOnly);
+  lines.push('horsesが1件もないraces側レースID: '+raceNoHorse);
+  lines.push('paysがないraces側レースID: '+raceNoPay);
+  lines.push('※同一レースIDの照合は競馬場＋日付＋レース番号で実施。');
+  lines.push('【重要】この結果はデータの読み取り確認です。元データや保存領域は変更していません。');
+  out.textContent=lines.join('\n\n');
+ }catch(e){out.textContent='監査エラー: '+(e?.message||String(e))+'\n既存データは変更していません。'}
+ finally{if(db)db.close();btn.disabled=false}
+};
+</script></body></html>
