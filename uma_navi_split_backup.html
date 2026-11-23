@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UMA-NAVI AI 分割バックアップ</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;margin:0 auto;padding:18px;line-height:1.6;color:#222}
+h1{font-size:22px} .box{border:1px solid #ccc;border-radius:12px;padding:14px;margin:14px 0}
+button,select,input{font-size:16px;padding:11px;border-radius:8px;border:1px solid #888}
+button{background:#1769aa;color:white;border:0;font-weight:600;margin:6px 4px 6px 0}
+button.secondary{background:#555} button:disabled{opacity:.5}
+.status{white-space:pre-wrap;background:#f4f4f4;padding:12px;border-radius:8px;overflow-wrap:anywhere}
+small{color:#555}
+</style>
+</head>
+<body>
+<h1>UMA-NAVI AI 分割バックアップ</h1>
+<p><b>読み取り専用</b>のバックアップページです。元のデータベースの追加・変更・削除は行いません。一度に全件をJSON化せず、少量ずつ別ファイルに保存します。</p>
+<div class="box">
+  <h2>1. 保存データを確認</h2>
+  <button id="check">件数を確認する</button>
+  <div id="counts" class="status">未確認</div>
+</div>
+<div class="box">
+  <h2>2. 分割ファイルを書き出す</h2>
+  <p>データ種類を選び、1ファイル分ずつ保存します。まずは「horses」からでも、どれからでも構いません。</p>
+  <p><label>データ種類　
+    <select id="store">
+      <option value="horses">horses（馬データ）</option>
+      <option value="races">races（レースデータ）</option>
+      <option value="pays">pays（払戻データ）</option>
+    </select>
+  </label></p>
+  <p><label>1ファイルの件数　
+    <select id="chunk">
+      <option value="5000">5,000件（安全優先）</option>
+      <option value="10000" selected>10,000件</option>
+      <option value="2000">2,000件（さらに小さく）</option>
+    </select>
+  </label></p>
+  <div id="progress" class="status">進行状況：未開始</div>
+  <button id="export">次の分割ファイルを書き出す</button>
+  <button id="reset" class="secondary">この種類の進行状況をリセット</button>
+  <p><small>1回押すごとにファイル1個だけ作ります。保存先を確認してから、次のファイルを書き出してください。途中でページを閉じても、進行状況はこのブラウザに保存されます。</small></p>
+</div>
+<div class="box">
+  <h2>注意</h2>
+  <ul>
+    <li>書き出したJSONファイルは、ファイルアプリの同じフォルダにまとめて保管してください。</li>
+    <li>3種類すべてを書き出す必要があります。</li>
+    <li>このページは復元機能を持ちません。バックアップ専用です。</li>
+    <li>既存のCSVや以前のバックアップは削除しないでください。</li>
+  </ul>
+</div>
+<script>
+(() => {
+  'use strict';
+  const DB_NAME = 'umaNaviDB_v25';
+  const DB_VERSION = 1;
+  const stores = ['races','horses','pays'];
+  const $ = id => document.getElementById(id);
+  let db = null;
+  const progressKey = store => 'umaNaviSplitBackup_v1_' + store;
+  function getProgress(store){
+    try { return Math.max(0, Number(localStorage.getItem(progressKey(store)) || 0)); }
+    catch(e){ return 0; }
+  }
+  function setProgress(store, value){
+    try { localStorage.setItem(progressKey(store), String(value)); }
+    catch(e){ throw new Error('進行状況を保存できません。Safariの設定を確認してください。'); }
+  }
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch(e){ reject(e); return; }
+      req.onsuccess = () => { db = req.result; resolve(db); };
+      req.onerror = () => reject(req.error || new Error('データベースを開けません'));
+      req.onblocked = () => reject(new Error('別のUMA-NAVI画面を閉じてから、もう一度お試しください'));
+    });
+  }
+  async function ensureDB(){ if(!db || !db.objectStoreNames) await openDB(); return db; }
+  async function countStore(store){
+    const database = await ensureDB();
+    return new Promise((resolve,reject)=>{
+      const tx = database.transaction(store,'readonly');
+      const req = tx.objectStore(store).count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  $('check').onclick = async () => {
+    $('check').disabled = true;
+    $('counts').textContent = '確認中...';
+    try{
+      const result = {};
+      for(const s of stores) result[s] = await countStore(s);
+      $('counts').textContent =
+        'races: ' + result.races.toLocaleString() + '件\n' +
+        'horses: ' + result.horses.toLocaleString() + '件\n' +
+        'pays: ' + result.pays.toLocaleString() + '件\n' +
+        '合計: ' + (result.races+result.horses+result.pays).toLocaleString() + '件\n\n件数確認OK';
+      updateProgress();
+    }catch(e){ $('counts').textContent = '確認エラー：' + (e.message || e); }
+    finally{ $('check').disabled = false; }
+  };
+  function updateProgress(){
+    const s = $('store').value, n = getProgress(s), size = Number($('chunk').value);
+    $('progress').textContent = '対象：' + s + '\n次に書き出す位置：' + (n+1).toLocaleString() + '件目\n1ファイル：約' + size.toLocaleString() + '件';
+  }
+  $('store').onchange = updateProgress;
+  $('chunk').onchange = updateProgress;
+  $('reset').onclick = () => {
+    const s = $('store').value;
+    if(!confirm(s + ' の進行状況だけを最初に戻します。保存済みファイルは削除されません。よろしいですか？')) return;
+    setProgress(s,0); updateProgress();
+  };
+  $('export').onclick = async () => {
+    const button = $('export');
+    button.disabled = true;
+    const store = $('store').value;
+    const chunkSize = Number($('chunk').value);
+    const offset = getProgress(store);
+    $('progress').textContent = store + ' のデータを読み込んでいます...\nページを閉じずにお待ちください。';
+    try{
+      const database = await ensureDB();
+      const records = [];
+      let skipped = 0;
+      let exhausted = false;
+      await new Promise((resolve,reject)=>{
+        let tx;
+        try { tx = database.transaction(store,'readonly'); }
+        catch(e){ reject(e); return; }
+        const req = tx.objectStore(store).openCursor();
+        req.onerror = () => reject(req.error || new Error('読み込みに失敗しました'));
+        req.onsuccess = event => {
+          const cursor = event.target.result;
+          if(!cursor){ exhausted = true; return; }
+          if(skipped < offset){
+            skipped++;
+            cursor.continue();
+            return;
+          }
+          records.push(cursor.value);
+          if(records.length >= chunkSize) return;
+          cursor.continue();
+        };
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error || new Error('読み込みトランザクションに失敗しました'));
+        tx.onabort = () => reject(tx.error || new Error('読み込みが中断されました'));
+      });
+      if(records.length === 0){
+        $('progress').textContent = store + ' は最後まで書き出し済みです。\n進行位置：' + offset.toLocaleString() + '件';
+        return;
+      }
+      const part = Math.floor(offset / chunkSize) + 1;
+      const payload = {
+        app: 'UMA-NAVI AI',
+        backup_type: 'split_readonly',
+        database: DB_NAME,
+        store,
+        part,
+        start_index: offset + 1,
+        end_index: offset + records.length,
+        record_count: records.length,
+        exported_at: new Date().toISOString(),
+        records
+      };
+      const json = JSON.stringify(payload);
+      const blob = new Blob([json], {type:'application/json;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'umaNavi_' + store + '_' + String(part).padStart(4,'0') + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+      const next = offset + records.length;
+      setProgress(store,next);
+      $('progress').textContent =
+        '保存処理を開始しました。\n' +
+        'ファイル：umaNavi_' + store + '_' + String(part).padStart(4,'0') + '.json\n' +
+        '今回：' + records.length.toLocaleString() + '件（' + (offset+1).toLocaleString() + '〜' + next.toLocaleString() + '件目）\n' +
+        '次回の開始位置：' + (next+1).toLocaleString() + '件目\n\n' +
+        'ファイルアプリに保存されたことを確認してから、次を押してください。';
+    }catch(e){
+      $('progress').textContent = '書き出しエラー：' + (e.message || e) + '\n進行位置は更新していません。もう一度試せます。';
+    }finally{
+      button.disabled = false;
+    }
+  };
+  updateProgress();
+})();
+</script>
+</body>
+</html>
