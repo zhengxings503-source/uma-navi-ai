@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UMA-NAVI AI 払戻データ詳細確認 v4</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;background:#f5f6f8;color:#202124;margin:0;padding:16px}
+main{max-width:950px;margin:auto}h1{font-size:21px}.card{background:#fff;border-radius:12px;padding:15px;margin:14px 0;box-shadow:0 1px 4px #0001}
+button{border:0;border-radius:10px;background:#1769d2;color:white;padding:13px 17px;font-size:16px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f3f5;padding:12px;border-radius:8px;font-size:12px;line-height:1.5}
+.small{font-size:13px;color:#666;line-height:1.6}#status{white-space:pre-wrap;line-height:1.6}
+</style></head>
+<body><main>
+<h1>UMA-NAVI AI 払戻データ詳細確認 v4</h1>
+<p>umaNaviDB_v25 の pays を読み取るだけの確認ページです。データの追加・変更・削除は行いません。</p>
+<div class="card"><button id="run">詳細チェックを開始</button><p class="small">処理が終わるまでSafariを閉じずに待ってください。</p><div id="status">未実行</div></div>
+<div id="out"></div>
+<script>
+function parseCSV(s){
+ const a=[];let v='',q=false;
+ for(let i=0;i<s.length;i++){
+  const c=s[i];
+  if(q){if(c==='"'&&s[i+1]==='"'){v+='"';i++}else if(c==='"')q=false;else v+=c}
+  else if(c==='"')q=true;
+  else if(c===','){a.push(v);v=''}
+  else if(c==='\r'||c==='\n'){if(c==='\r'&&s[i+1]==='\n')i++;a.push(v);v='';}
+  else v+=c;
+ }
+ a.push(v);
+ return a;
+}
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('umaNaviDB_v25');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(Error('DBが別タブで使用中です。ほかのUMA-NAVIタブを閉じてください。'))})}
+function runScan(db){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction('pays','readonly'),req=tx.objectStore('pays').openCursor();
+  let total=0, shapeErr=0, fieldErr=0, ids=new Map(), badSamples=[], multiRows=new Map();
+  req.onsuccess=()=>{
+   const c=req.result;if(!c){resolve({total,shapeErr,fieldErr,ids,badSamples,multiRows});return}
+   total++;
+   try{
+    const obj=c.value,ks=Object.keys(obj).filter(k=>k!=='_key');
+    if(ks.length!==1){shapeErr++;if(badSamples.length<30)badSamples.push(`保存形式異常 key=${String(c.key).slice(0,100)} keys=${ks.length}`);c.continue();return}
+    const hs=parseCSV(ks[0]),vs=parseCSV(String(obj[ks[0]]));
+    if(hs.length!==vs.length){fieldErr++;if(badSamples.length<30)badSamples.push(`列数不一致 ${hs.length}列/${vs.length}値 key=${String(c.key).slice(0,100)}\nヘッダー末尾=${JSON.stringify(hs.slice(-5))}\n値末尾=${JSON.stringify(vs.slice(-5))}`);c.continue();return}
+    const row={};hs.forEach((h,i)=>row[h]=vs[i]);
+    const venue=(row['競馬場']||'').trim(),date=(row['競走年月日']||'').trim(),no=(row['レース番号']||'').trim();
+    if(!venue||!date||!no){fieldErr++;if(badSamples.length<30)badSamples.push(`識別項目欠落 venue=${venue} date=${date} no=${no}`);c.continue();return}
+    const id=[venue,date,no].join('|'), rec={key:String(c.key),name:row['レース名']||'',winCombo:row['単勝組番']||'',winPay:row['単勝払戻金（円）']||'',trioCombo:row['３連単組番']||row['三連単組番']||'',trioPay:row['３連単払戻金（円）']||row['三連単払戻金（円）']||'',valueTail:vs.slice(-8)};
+    if(!ids.has(id))ids.set(id,[]);
+    ids.get(id).push(rec);
+   }catch(e){fieldErr++;if(badSamples.length<30)badSamples.push('解析例外：'+e.message)}
+   c.continue();
+  };
+  req.onerror=()=>reject(req.error);tx.onerror=()=>reject(tx.error);
+ });
+}
+document.getElementById('run').onclick=async()=>{
+ const b=document.getElementById('run'),s=document.getElementById('status'),o=document.getElementById('out');b.disabled=true;o.innerHTML='';
+ try{
+  s.textContent='データベースを開いています…';const db=await openDB();
+  s.textContent='全払戻レコードを再確認しています…';const x=await runScan(db);db.close();
+  const multi=[...x.ids.entries()].filter(([id,a])=>a.length>1);
+  const six=multi.filter(([id,a])=>a.length>=3);
+  const multiText=multi.map(([id,a])=>`${id}（${a.length}件）\n`+a.map((r,i)=>`  ${i+1}. レース名=${r.name} / 単勝=${r.winCombo} ${r.winPay}円 / 三連単=${r.trioCombo} ${r.trioPay}円 / key=${r.key.slice(0,90)}`).join('\n')).join('\n\n');
+  const sixText=six.map(([id,a])=>`${id}\n`+a.map((r,i)=>`  ${i+1}. ${JSON.stringify(r,null,2)}`).join('\n')).join('\n\n')||'3件以上のレースなし';
+  s.textContent='詳細チェック完了';
+  o.innerHTML=`<div class="card"><h2>再チェック集計</h2><p>総レコード：<b>${x.total.toLocaleString()}</b><br>保存形式異常：<b>${x.shapeErr}</b><br>CSV列数・識別項目等の異常：<b>${x.fieldErr}</b><br>正常に識別できたレース数：<b>${x.ids.size.toLocaleString()}</b><br>複数レコードのレース数：<b>${multi.length}</b></p></div>
+  <div class="card"><h2>複数レコードの内容（全件）</h2><pre>${multiText||'該当なし'}</pre></div>
+  <div class="card"><h2>3件以上あるレースの詳細</h2><pre>${sixText}</pre></div>
+  <div class="card"><h2>異常レコードのサンプル（最大30件）</h2><pre>${x.badSamples.join('\n\n')||'異常なし'}</pre></div>
+  <p class="small">結果を上から順番にコピーして送ってください。「以上」と言うまでは分析を始めません。</p>`;
+ }catch(e){s.textContent='エラー：'+e.message}
+ b.disabled=false;
+};
+</script></main></body></html>
