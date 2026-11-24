@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UMA-NAVI AI 払戻データ重複チェック v3</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;margin:0;padding:18px;background:#f5f6f8;color:#202124}
+main{max-width:900px;margin:auto}h1{font-size:22px}p{line-height:1.6}
+button{font-size:16px;padding:13px 18px;border:0;border-radius:10px;background:#1769d2;color:white}
+.card{background:white;border-radius:12px;padding:15px;margin:14px 0;box-shadow:0 1px 4px #0001}
+#status{white-space:pre-wrap;line-height:1.6}.muted{color:#666;font-size:13px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f3f5;padding:12px;border-radius:8px;font-size:13px}
+</style>
+</head>
+<body><main>
+<h1>UMA-NAVI AI 払戻データ重複チェック v3</h1>
+<p>このページは <b>umaNaviDB_v25 の pays（払戻）</b>を読み取るだけです。データの追加・変更・削除は一切しません。</p>
+<div class="card"><button id="run">払戻データをチェックする</button><p class="muted">処理中はSafariを閉じずに待ってください。データ量により少し時間がかかります。</p><div id="status">まだチェックしていません。</div></div>
+<div id="result"></div>
+<script>
+const statusEl=document.getElementById('status'), resultEl=document.getElementById('result');
+function parseCSV(s){
+ const out=[];let v='',q=false;
+ for(let i=0;i<s.length;i++){const c=s[i];
+  if(q){if(c==='"'&&s[i+1]==='"'){v+='"';i++}else if(c==='"')q=false;else v+=c}
+  else if(c==='"')q=true;else if(c===','){out.push(v);v=''}else if(c==='\r'||c==='\n'){if(c==='\r'&&s[i+1]==='\n')i++;out.push(v);v='';if(out.length)break}else v+=c;
+ }
+ if(out.length===0||v!=='')out.push(v);
+ return out;
+}
+function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open('umaNaviDB_v25');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('データベースが別のタブで使用中です。ほかのUMA-NAVIタブを閉じて再試行してください。'));});}
+function scanPays(db){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction('pays','readonly'), store=tx.objectStore('pays');
+  const req=store.openCursor(), counts=new Map(), exact=new Map();let total=0, valid=0, bad=0, examples=[];
+  req.onsuccess=()=>{
+   const c=req.result;if(!c){resolve({total,valid,bad,counts,exact,examples});return;}
+   total++;
+   try{
+    const obj=c.value;const keys=Object.keys(obj).filter(k=>k!=='_key');
+    if(keys.length!==1)throw new Error('保存形式不一致');
+    const headers=parseCSV(keys[0]), vals=parseCSV(String(obj[keys[0]]));
+    if(headers.length!==vals.length)throw new Error('列数不一致');
+    const row={};headers.forEach((h,i)=>row[h]=vals[i]);
+    const venue=(row['競馬場']||'').trim(), date=(row['競走年月日']||'').trim(), no=(row['レース番号']||'').trim();
+    if(!venue||!date||!no)throw new Error('レース識別情報なし');
+    const id=[venue,date,no].join('|');valid++;
+    counts.set(id,(counts.get(id)||0)+1);
+    const sig=headers.map(h=>row[h]??'').join('\u001f');
+    exact.set(sig,(exact.get(sig)||0)+1);
+    if(examples.length<5)examples.push({id,name:row['レース名']||'',key:c.key});
+   }catch(e){bad++;}
+   c.continue();
+  };
+  req.onerror=()=>reject(req.error);
+  tx.onerror=()=>reject(tx.error);
+ });
+}
+document.getElementById('run').onclick=async()=>{
+ document.getElementById('run').disabled=true;resultEl.innerHTML='';
+ try{
+  statusEl.textContent='データベースを開いています…';
+  const db=await openDB();
+  statusEl.textContent='払戻データを全件確認しています…';
+  const x=await scanPays(db);db.close();
+  const distribution={};let multi=0,extra=0;const multiList=[];
+  for(const [id,n] of x.counts){distribution[n]=(distribution[n]||0)+1;if(n>1){multi++;extra+=n-1;if(multiList.length<100)multiList.push(id+' ： '+n+'件');}}
+  let exactDupRows=0;for(const n of x.exact.values())if(n>1)exactDupRows+=n-1;
+  const dist=Object.keys(distribution).sort((a,b)=>Number(a)-Number(b)).map(n=>`${n}件のレース：${distribution[n]}レース`).join('\n')||'なし';
+  statusEl.textContent='チェック完了！';
+  resultEl.innerHTML=`
+  <div class="card"><h2>チェック結果</h2>
+  <p>払戻レコード総数：<b>${x.total.toLocaleString()}件</b><br>
+  正常に読み取れたレコード：<b>${x.valid.toLocaleString()}件</b><br>
+  読み取り異常：<b>${x.bad.toLocaleString()}件</b><br>
+  払戻データがあるレース数：<b>${x.counts.size.toLocaleString()}レース</b></p></div>
+  <div class="card"><h2>1レースあたりの払戻レコード数</h2><pre>${dist}</pre>
+  <p>複数レコードあるレース：<b>${multi.toLocaleString()}レース</b><br>
+  2件目以降の追加レコード合計：<b>${extra.toLocaleString()}件</b></p></div>
+  <div class="card"><h2>完全一致する重複行</h2><p>同じ内容の行が重複している数：<b>${exactDupRows.toLocaleString()}件</b></p></div>
+  <div class="card"><h2>複数レコードがあるレース（最大100件）</h2><pre>${multiList.join('\n')||'該当なし'}</pre></div>
+  <div class="card"><h2>読み取り例</h2><pre>${x.examples.map(e=>e.id+' / '+e.name).join('\n')}</pre></div>
+  <p>この結果をそのままコピーして送ってください。</p>`;
+ }catch(e){statusEl.textContent='エラー：'+(e&&e.message?e.message:String(e));}
+ document.getElementById('run').disabled=false;
+};
+</script></main></body></html>
