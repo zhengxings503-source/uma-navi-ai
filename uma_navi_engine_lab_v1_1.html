@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>UMA-NAVI AI エンジン検証 v1.1</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#141f31;--line:#29384e;--gold:#e8bd58;--muted:#9eacc0;--txt:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#101b2c,#080e18);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:14px}
+main{max-width:950px;margin:auto}.brand{color:var(--gold);font-size:12px;letter-spacing:.15em;font-weight:700}h1{font-size:25px;margin:6px 0}h2{font-size:17px;margin:0 0 12px}.muted,.small{color:var(--muted);font-size:12px;line-height:1.6}.panel{background:rgba(20,31,49,.97);border:1px solid var(--line);border-radius:15px;padding:14px;margin:12px 0}
+button,select{font:inherit}select{width:100%;background:#0b1422;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:11px;margin:6px 0 10px}
+button{width:100%;border:0;border-radius:10px;background:var(--gold);color:#17130a;font-weight:750;padding:12px;margin-top:8px}button:disabled{opacity:.5}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#0d1726;border:1px solid var(--line);border-radius:10px;padding:10px}.num{font-size:20px;color:var(--gold);font-weight:750}.stat div:last-child{font-size:11px;color:var(--muted)}
+.status{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6;color:#cbd5e1}.good{color:#8ee0b0}.bad{color:#ffadad}
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--gold)}
+.note{background:#0d1726;border-left:3px solid var(--gold);padding:10px;border-radius:7px;font-size:12px;color:#cbd5e1;line-height:1.6}
+@media(max-width:480px){body{padding:10px}.num{font-size:17px}.panel{padding:11px}}
+</style>
+</head>
+<body><main>
+<div class="brand">LOCAL RACING · ENGINE LAB</div>
+<h1>UMA-NAVI AI</h1>
+<p class="muted">予想エンジン検証 v1.1 — 既存データ読み取り専用</p>
+<section class="panel">
+<h2>データベース接続</h2><div id="status" class="status">接続確認中…</div>
+<div class="stats" style="margin-top:12px">
+ <div class="stat"><div class="num" id="racesN">-</div><div>レース</div></div>
+ <div class="stat"><div class="num" id="horsesN">-</div><div>馬データ</div></div>
+ <div class="stat"><div class="num" id="paysN">-</div><div>払戻</div></div>
+</div><button id="scanBtn">データを読み込んで検証準備</button>
+</section>
+<section class="panel">
+<h2>過去レースで予想を再現</h2>
+<p class="small">指定日より前の成績だけで評価。対象日当日の着順・タイム・人気・払戻は評価点に使用しない。実際の着順は予想後の照合だけに使う。</p>
+<label class="small" for="dateSel">対象日</label><select id="dateSel" disabled><option>先にデータを読み込んでください</option></select>
+<label class="small" for="trackSel">競馬場</label><select id="trackSel" disabled><option>対象日を選択してください</option></select>
+<button id="predictBtn" disabled>この日のレースを予想</button>
+<div id="predictStatus" class="status" style="margin-top:10px">データ読み込み後に選択できます。</div>
+</section>
+<section class="panel">
+<h2>予想結果</h2><div id="resultInfo" class="small">まだ予想していません。</div>
+<div class="tablewrap"><table><thead><tr><th>予想</th><th>馬番</th><th>馬名</th><th>評価点</th><th>過去出走</th><th>過去相対着順</th><th>過去平均着順</th><th>実際の着順</th></tr></thead><tbody id="results"><tr><td colspan="8">結果がここに表示されます。</td></tr></tbody></table></div>
+<p class="small">過去相対着順は出走頭数で補正した成績指標（高いほど良い）。過去平均着順は実際の着順数値の平均。実際の着順は照合専用で、評価点には使用しない。</p>
+</section>
+<section class="panel"><h2>v1.1で修正した点</h2><div class="note">
+・全角数字を半角数字に正規化して着順を数値化<br>
+・着順が空欄／中止等は「未確定」とし、0着扱いしない<br>
+・馬名だけでなく生年月日・性別も使って過去走を照合<br>
+・相対着順と実際の平均着順を分けて表示<br>
+・当日結果を予想スコアに混ぜない
+</div><p class="small">この段階は基礎検証用。払戻の集約、券種別バックテスト、回収率検証は別工程。</p></section>
+<footer class="small">umaNaviDB_v25 を readonly で開きます。データの追加・変更・削除・移行は行いません。</footer>
+</main>
+<script>
+'use strict';
+const DB='umaNaviDB_v25', VERSION=1;
+const $=id=>document.getElementById(id);
+let allRaces=[], allHorses=[], grouped=new Map(), loaded=false, raceMeta=new Map(), raceSizes=new Map();
+function openDB(){return new Promise((resolve,reject)=>{const q=indexedDB.open(DB,VERSION);q.onsuccess=()=>{const d=q.result;d.onversionchange=()=>d.close();resolve(d)};q.onerror=()=>reject(q.error||new Error('DBを開けません'));q.onblocked=()=>reject(new Error('別タブでDBが使用中です'))})}
+function cursorAll(db,store){return new Promise((resolve,reject)=>{const tx=db.transaction(store,'readonly'),out=[],req=tx.objectStore(store).openCursor();req.onsuccess=()=>{const c=req.result;if(c){out.push(c.value);c.continue()}};tx.oncomplete=()=>resolve(out);tx.onerror=()=>reject(tx.error||new Error(store+'読み込みエラー'));tx.onabort=()=>reject(tx.error||new Error(store+'読み込み中断'))})}
+function csv(s){const a=[];let v='',q=false;for(let i=0;i<s.length;i++){const c=s[i];if(q){if(c==='"'&&s[i+1]==='"'){v+='"';i++}else if(c==='"')q=false;else v+=c}else if(c==='"')q=true;else if(c===','){a.push(v);v=''}else v+=c}a.push(v);return a}
+function decodeRecord(o){if(!o||typeof o!=='object')return null;const h=Object.keys(o).find(k=>k!=='_key'&&k.includes(','));if(!h)return null;const heads=csv(h),vals=csv(String(o[h]??''));if(heads.length<8||vals.length<heads.length/2)return null;const x={};heads.forEach((k,i)=>x[String(k).trim()]=vals[i]??'');return x}
+const clean=v=>String(v??'').trim();
+const norm=v=>clean(v).normalize('NFKC').replace(/\s/g,'');
+function num(v){const s=norm(v).replace(/,/g,'');const m=s.match(/-?\d+(?:\.\d+)?/);if(!m)return null;const n=Number(m[0]);return Number.isFinite(n)?n:null}
+function dateNum(v){const s=norm(v);return /^\d{8}$/.test(s)?Number(s):null}
+function get(x,keys){for(const k of keys)if(x[k]!==undefined&&clean(x[k])!=='')return x[k];return ''}
+function raceId(x){return [norm(get(x,['競馬場'])),norm(get(x,['競走年月日'])),norm(get(x,['レース番号']))].join('|')}
+function horseName(x){return norm(get(x,['馬名']))}
+function finish(x){const raw=norm(get(x,['着順']));if(!raw)return null;if(/中止|取消|除外|失格|不成立|降着/.test(raw))return null;const n=num(raw);return n!==null&&n>0?n:null}
+function track(x){return norm(get(x,['競馬場']))}
+function date(x){return dateNum(get(x,['競走年月日']))}
+function raceNo(x){return norm(get(x,['レース番号']))}
+function distance(x){return num(get(x,['距離']))}
+function horseKey(x){return [horseName(x),norm(get(x,['生年月日'])),norm(get(x,['性']))].join('|')}
+function percentileFinish(x){const f=finish(x),field=x._fieldSize||num(get(x,['頭数']));if(!f||!field||f<1||f>field)return null;return (field-f)/(Math.max(1,field-1))}
+function weightedMean(arr){let s=0,w=0;arr.forEach((v,i)=>{const z=Math.pow(.78,i);s+=v*z;w+=z});return w?s/w:null}
+function scoreHorse(current,history){const past=history.filter(h=>date(h)<date(current)&&finish(h)!==null).sort((a,b)=>date(b)-date(a));const recent=past.slice(0,5),vals=recent.map(percentileFinish).filter(v=>v!==null);const form=weightedMean(vals);const tr=track(current),dist=distance(current);const sameTrack=past.filter(h=>track(h)===tr).slice(0,8).map(percentileFinish).filter(v=>v!==null);const sameDist=past.filter(h=>{const d=distance(h);return d&&dist&&Math.abs(d-dist)<=200}).slice(0,8).map(percentileFinish).filter(v=>v!==null);const trackScore=weightedMean(sameTrack),distScore=weightedMean(sameDist);const count=past.length;let raw=50;if(form!==null)raw+=form*34;if(trackScore!==null)raw+=trackScore*9;if(distScore!==null)raw+=distScore*7;raw=50+(raw-50)*(.45+.55*(Math.min(count,5)/5));const avgFinish=recent.length?recent.reduce((s,h)=>s+finish(h),0)/recent.length:null;return {score:Math.round(raw*10)/10,count,relative:vals.length?weightedMean(vals):null,avgFinish:avgFinish===null?null:Math.round(avgFinish*100)/100}}
+function setStatus(s,cls=''){ $('status').textContent=s;$('status').className='status '+cls}
+function populateDates(){const dates=[...new Set(allRaces.map(x=>date(x)).filter(Boolean))].sort((a,b)=>b-a);const s=$('dateSel');s.innerHTML='';dates.forEach(d=>{const o=document.createElement('option');o.value=String(d);o.textContent=String(d).replace(/^(\d{4})(\d{2})(\d{2})$/,'$1/$2/$3');s.appendChild(o)});s.disabled=!dates.length;updateTracks()}
+function updateTracks(){const d=Number($('dateSel').value),list=allRaces.filter(x=>date(x)===d);const ts=[...new Set(list.map(track).filter(Boolean))].sort();const s=$('trackSel');s.innerHTML='';ts.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;s.appendChild(o)});s.disabled=!ts.length;$('predictBtn').disabled=!ts.length}
+async function load(){$('scanBtn').disabled=true;try{setStatus('既存DBを読み込み中…（読み取り専用）');const db=await openDB();try{const [r,p]=await Promise.all([cursorAll(db,'races'),new Promise((resolve,reject)=>{const tx=db.transaction('pays','readonly'),q=tx.objectStore('pays').count();tx.oncomplete=()=>resolve(q.result||0);tx.onerror=()=>reject(tx.error)})]);raceMeta.clear();allRaces=r.map(decodeRecord).filter(Boolean);for(const x of allRaces)raceMeta.set(raceId(x),{distance:distance(x)});$('racesN').textContent=allRaces.length.toLocaleString();$('paysN').textContent=Number(p).toLocaleString();allHorses=[];raceSizes.clear();grouped.clear();await new Promise((resolve,reject)=>{const tx=db.transaction('horses','readonly'),req=tx.objectStore('horses').openCursor();req.onsuccess=()=>{const c=req.result;if(!c)return;const x=decodeRecord(c.value);if(x){const id=raceId(x),name=horseName(x);raceSizes.set(id,(raceSizes.get(id)||0)+1);if(name){const m=raceMeta.get(id)||{};const z={'競馬場':track(x),'競走年月日':get(x,['競走年月日']),'レース番号':raceNo(x),'馬名':get(x,['馬名']),'着順':get(x,['着順']),'馬番':get(x,['馬番']),'距離':m.distance??null,'生年月日':get(x,['生年月日']),'性':get(x,['性']),'_fieldSize':1};allHorses.push(z)}}c.continue()};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('馬データ読み込みエラー'));tx.onabort=()=>reject(tx.error||new Error('馬データ読み込み中断'))});for(const h of allHorses){h._fieldSize=raceSizes.get(raceId(h))||1;const k=horseKey(h);if(!grouped.has(k))grouped.set(k,[]);grouped.get(k).push(h)}$('horsesN').textContent=allHorses.length.toLocaleString()}finally{db.close()}populateDates();loaded=true;setStatus(`読み込み完了。\nレース ${allRaces.length.toLocaleString()}件／馬 ${allHorses.length.toLocaleString()}件／払戻 ${$('paysN').textContent}件\n既存データは変更していません。`,'good');$('predictStatus').textContent='対象日と競馬場を選択してください。'}catch(e){setStatus('読み込みエラー：'+e.message,'bad')}finally{$('scanBtn').disabled=false}}
+function predict(){if(!loaded)return;const d=Number($('dateSel').value),t=$('trackSel').value;const targets=allHorses.filter(h=>date(h)===d&&track(h)===t);if(!targets.length){$('predictStatus').textContent='対象日の出走馬データがありません。';return}const races=new Map();targets.forEach(h=>{const id=raceId(h);if(!races.has(id))races.set(id,[]);races.get(id).push(h)});const output=[];for(const [id,entries] of races){const ranked=entries.map(h=>({h,...scoreHorse(h,grouped.get(horseKey(h))||[])})).sort((a,b)=>b.score-a.score);const [venue,day,rno]=id.split('|');ranked.forEach((x,i)=>output.push({venue,day,rno,...x,rank:i+1}))}output.sort((a,b)=>Number(a.rno)-Number(b.rno)||a.rank-b.rank);$('results').innerHTML='';output.forEach(x=>{const tr=document.createElement('tr');const cells=[x.rank+'位',get(x.h,['馬番']),get(x.h,['馬名']),x.score.toFixed(1),x.count,x.relative===null?'データなし':(x.relative*100).toFixed(0)+'%',x.avgFinish===null?'データなし':x.avgFinish.toFixed(1)+'着',finish(x.h)??'未確定'];cells.forEach(v=>{const td=document.createElement('td');td.textContent=v??'-';tr.appendChild(td)});$('results').appendChild(tr)});const raceCount=races.size,firsts=output.filter(x=>x.rank===1&&finish(x.h)===1).length,top3=output.filter(x=>x.rank<=3&&finish(x.h)!==null&&finish(x.h)<=3).length;const known=output.filter(x=>finish(x.h)!==null).length;$('resultInfo').textContent=`${t} ${String(d)} / ${raceCount}レース / 出走馬 ${output.length}頭\n実際の着順を取得できた馬：${known}/${output.length}頭\n予想1位が実際に1着：${firsts}/${raceCount}レース\n予想上位3頭が実際の3着以内：${top3}頭\n※当日結果は評価点に使用していません。`;$('predictStatus').textContent='予想計算が完了しました。着順が「未確定」のまま残る場合は、元データの該当レコードを追加調査します。'}
+$('scanBtn').addEventListener('click',load);$('dateSel').addEventListener('change',updateTracks);$('predictBtn').addEventListener('click',predict);if(!('indexedDB'in window))setStatus('このブラウザはIndexedDBに対応していません。','bad');
+</script></body></html>
