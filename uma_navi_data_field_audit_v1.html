@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>UMA-NAVI AI データ項目調査 v1.0</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#141f31;--line:#29384e;--gold:#e8bd58;--muted:#9eacc0;--txt:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#101b2c,#080e18);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:12px}
+main{max-width:900px;margin:auto}.brand{color:var(--gold);font-size:12px;letter-spacing:.14em;font-weight:700}h1{font-size:23px;margin:6px 0}h2{font-size:16px;margin:0 0 10px}
+p,.small{color:var(--muted);font-size:12px;line-height:1.7}.panel{background:rgba(20,31,49,.97);border:1px solid var(--line);border-radius:15px;padding:14px;margin:12px 0}
+button{width:100%;border:0;border-radius:10px;background:var(--gold);color:#17130a;font-weight:800;padding:13px;margin-top:8px;font:inherit}
+button:disabled{opacity:.45}.status{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.65;color:#cbd5e1}.good{color:#8ee0b0}.bad{color:#ffadad}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.stat{background:#0d1726;border:1px solid var(--line);border-radius:10px;padding:10px}.num{font-size:21px;color:var(--gold);font-weight:800}.stat div:last-child{font-size:11px;color:var(--muted)}
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}td,th{padding:8px;border-bottom:1px solid var(--line);text-align:right}td:first-child,th:first-child{text-align:left}th{color:var(--gold)}
+.note{background:#0d1726;border-left:3px solid var(--gold);padding:10px;border-radius:7px;font-size:12px;color:#cbd5e1;line-height:1.7}
+.tag{display:inline-block;padding:3px 7px;border-radius:99px;background:#26364c;color:#d8e2ef;font-size:10px}
+@media(max-width:480px){body{padding:9px}.panel{padding:11px}.num{font-size:19px}}
+</style></head>
+<body><main>
+<div class="brand">LOCAL RACING · DATA AUDIT</div>
+<h1>UMA-NAVI AI</h1>
+<p>データ項目収録状況チェック v1.0 — 地方競馬専用／既存DB読み取り専用</p>
+
+<section class="panel">
+<h2>データベース接続</h2>
+<div id="status" class="status">接続準備完了。下のボタンを押してください。</div>
+<div class="stats">
+ <div class="stat"><div class="num" id="racesN">-</div><div>対象レース数</div></div>
+ <div class="stat"><div class="num" id="horsesN">-</div><div>出走馬レコード</div></div>
+</div>
+<button id="loadBtn">データ項目を調査する</button>
+</section>
+
+<section class="panel">
+<h2>調査結果の見方</h2>
+<div class="note">
+騎手・調教師・年齢・性別・斤量・枠順・馬番などについて、実際のCSV見出し名、値が入っている件数、空欄件数、値の種類数、サンプルを調べます。<br>
+ここでは項目の収録状況だけを確認します。評価点や予想ロジックの変更、データの追加・更新・削除は一切行いません。
+</div>
+</section>
+
+<section class="panel">
+<h2>項目別の収録状況</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>調査項目</th><th>実際の列名</th><th>入力件数</th><th>空欄</th><th>入力率</th><th>種類数*</th></tr></thead>
+<tbody id="fieldRows"><tr><td colspan="6">まだ調査していません。</td></tr></tbody>
+</table></div>
+<p class="small">*種類数は値の異なる数。大量データでも処理が重くなりすぎないよう、最大50,000種類まで数えます。</p>
+</section>
+
+<section class="panel">
+<h2>値のサンプル</h2>
+<div id="samples" class="small">調査後に表示します。</div>
+</section>
+
+<section class="panel">
+<h2>CSV見出し一覧</h2>
+<p class="small">DBに保存されている出走馬データの列名を確認できます。</p>
+<div id="headers" class="small">調査後に表示します。</div>
+</section>
+
+<section class="panel">
+<h2>調査対象・注意点</h2>
+<div class="note">
+・対象DB：umaNaviDB_v25 の horses ストア<br>
+・騎手／調教師／年齢／性別／斤量／枠順／馬番などの列を探します。<br>
+・列名は実際に保存されているCSVヘッダーから判定します。似た名前の列が複数ある場合は候補をすべて表示します。<br>
+・データが存在することと、予想に有効であることは別です。次の段階で、過去情報だけを使った成績分析を行います。<br>
+・このページはIndexedDBをreadonlyで開きます。既存データは変更しません。
+</div>
+</section>
+<footer class="small">UMA-NAVI AI / Data Audit v1.0</footer>
+</main>
+<script>
+'use strict';
+const DB='umaNaviDB_v25',VERSION=1,$=id=>document.getElementById(id);
+let busy=false;
+function openDB(){return new Promise((ok,no)=>{const q=indexedDB.open(DB,VERSION);q.onsuccess=()=>{const d=q.result;d.onversionchange=()=>d.close();ok(d)};q.onerror=()=>no(q.error||Error('DBを開けません'));q.onblocked=()=>no(Error('別タブでDBが使用中です'))})}
+function csv(s){const a=[];let v='',q=false;for(let i=0;i<s.length;i++){const c=s[i];if(q){if(c==='"'&&s[i+1]==='"'){v+='"';i++}else if(c==='"')q=false;else v+=c}else if(c==='"')q=true;else if(c===','){a.push(v);v=''}else v+=c}a.push(v);return a}
+function decode(o){if(!o||typeof o!=='object')return null;const k=Object.keys(o).find(k=>k!=='_key'&&k.includes(','));if(!k)return null;const h=csv(k),v=csv(String(o[k]??''));if(h.length<8||v.length<h.length/2)return null;const x={};h.forEach((n,i)=>x[String(n).trim()]=v[i]??'');return x}
+const clean=v=>String(v??'').trim();
+function setStatus(s,c=''){ $('status').textContent=s;$('status').className='status '+c}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+const specs=[
+ {label:'騎手',re:/(騎手|ジョッキー)/},
+ {label:'調教師',re:/(調教師|調教師名|厩舎)/},
+ {label:'年齢',re:/^(年齢|馬齢)$/},
+ {label:'性別',re:/^(性|性別)$/},
+ {label:'斤量',re:/(斤量|負担重量|重量)/},
+ {label:'枠順',re:/(枠番|枠順)/},
+ {label:'馬番',re:/^(馬番|馬番号)$/},
+ {label:'馬体重',re:/(馬体重|体重)/},
+ {label:'馬体重増減',re:/(増減|体重差)/},
+ {label:'距離',re:/^(距離|競走距離)$/},
+ {label:'競馬場',re:/^(競馬場|場名)$/},
+ {label:'競走年月日',re:/^(競走年月日|年月日|日付)$/},
+ {label:'着順',re:/^(着順|確定着順)$/}
+];
+function valueSummary(values){
+ const s=new Set();let count=0;
+ for(const v of values){const z=clean(v);if(z){count++;if(s.size<50000)s.add(z)}}
+ return {count,unique:s.size,values:[...s].slice(0,8)};
+}
+async function load(){
+ if(busy)return;busy=true;$('loadBtn').disabled=true;setStatus('既存DBを読み込み中…（読み取り専用）');
+ try{
+  const db=await openDB();let total=0,headerSet=new Set(),raceSet=new Set(),bad=0,headers=[],fields=[];
+  try{
+   const tx=db.transaction('horses','readonly'),req=tx.objectStore('horses').openCursor();
+   await new Promise((ok,no)=>{
+    req.onsuccess=()=>{const c=req.result;if(!c)return;
+     const x=decode(c.value);
+     if(x){
+      total++;
+      if(!headers.length){
+       headers=Object.keys(x).sort((a,b)=>a.localeCompare(b,'ja'));
+       headers.forEach(h=>headerSet.add(h));
+       fields=specs.map(sp=>{
+        const cols=headers.filter(h=>sp.re.test(h));
+        const chosen=cols[0]||'';
+        return {label:sp.label,cols,chosen,count:0,unique:new Set(),values:[]};
+       });
+      }
+      const v=clean(x['競馬場']),d=clean(x['競走年月日']),r=clean(x['レース番号']);
+      if(v&&d&&r)raceSet.add([v,d,r].join('|'));
+      for(const f of fields){
+       if(!f.chosen)continue;
+       const z=clean(x[f.chosen]);
+       if(!z)continue;
+       f.count++;
+       if(f.unique.size<50000)f.unique.add(z);
+       if(f.values.length<8&&!f.values.includes(z))f.values.push(z);
+      }
+     }else bad++;
+     c.continue();
+    };
+    tx.oncomplete=ok;tx.onerror=()=>no(tx.error||Error('馬データ読込エラー'));tx.onabort=()=>no(tx.error||Error('読込中断'));
+   });
+  }finally{db.close()}
+  if(!total)throw Error('馬データを読み込めませんでした。UMA-NAVI AIのDBがあるページと同じブラウザで開いているか確認してください。');
+  $('racesN').textContent=raceSet.size.toLocaleString();
+  $('horsesN').textContent=total.toLocaleString();
+  $('fieldRows').innerHTML=fields.map(f=>{
+   const rate=f.count/total*100;
+   return `<tr><td>${esc(f.label)}</td><td>${f.cols.length?esc(f.cols.join(' / ')):'<span class="tag">列なし</span>'}</td><td>${f.chosen?f.count.toLocaleString():'—'}</td><td>${f.chosen?(total-f.count).toLocaleString():'—'}</td><td>${f.chosen?rate.toFixed(1)+'%':'—'}</td><td>${f.chosen?(f.unique.size>=50000?'50,000以上':f.unique.size.toLocaleString()):'—'}</td></tr>`;
+  }).join('');
+  $('samples').innerHTML=fields.map(f=>`<div style="margin:8px 0"><b>${esc(f.label)}</b>：${f.chosen?esc(f.chosen):'該当列なし'}${f.cols.length>1?` <span class="small">（他候補：${esc(f.cols.slice(1).join(' / '))}）</span>`:''}<br>${f.values.length?`<span class="small">${f.values.map(esc).join('、')}</span>`:'<span class="small">サンプルなし</span>'}</div>`).join('');
+  $('headers').textContent=headers.join(' ／ ');
+  setStatus(`調査完了。\nレース ${raceSet.size.toLocaleString()}件／出走馬 ${total.toLocaleString()}件\nCSV列数 ${headers.length}件／読み取り不能レコード ${bad.toLocaleString()}件\n既存データは変更していません。`,'good');
+ }catch(e){setStatus('調査エラー：'+e.message,'bad')}
+ finally{busy=false;$('loadBtn').disabled=false}
+}
+$('loadBtn').addEventListener('click',load);
+if(!('indexedDB'in window))setStatus('このブラウザはIndexedDBに対応していません。','bad');
+</script></body></html>
